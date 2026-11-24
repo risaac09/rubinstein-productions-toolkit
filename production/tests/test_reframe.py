@@ -525,7 +525,7 @@ class TestPlanManifest(unittest.TestCase):
         self.assertEqual(copy["clips"][1]["spans"][0]["reframe"]["9x16"]["status"], "no_face")
         self.assertEqual(copy["reframe_plan"]["size"], [1280, 720])
         text = reframe.tsv(rows)
-        self.assertEqual(text.splitlines()[0].split("\t"), list(reframe.COLUMNS))
+        self.assertEqual(text.splitlines()[0].split("\t"), list(reframe.COLUMNS + reframe.FRAMING_COLUMNS))
         self.assertEqual(len(text.splitlines()), 7)
 
     def test_plan_uses_the_size_the_reader_fitted_while_reading(self):

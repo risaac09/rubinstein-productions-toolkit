@@ -622,6 +622,91 @@ outside 0 to 1, a zoom outside 1 to 4, an item number that does not exist, or
 cannot be used (a picture with no area) is not dropped: the item's review
 list says so. Not run against a real Resolve.
 
+### Subject, rule and true resolution
+
+Each crop now records a `framing` block, on the crop and in the plan entry. The
+TSV carries it as the columns `subject`, `rule`, `shot`, `look`, `eye_line`,
+`third_px`, `native_px`, `deliver`, `margin`, `max_zoom` and `edges`. The
+module `rpresolve/framing_rules.py` holds the numbers; its docstring is the
+spec.
+
+- **Subject:** `face`, `saliency` (no face) or `hand` (a hand entry).
+- **Rule:** `face centre` (the default framing, `centre`), `centred`, `look
+  room`, `as shot` (the master shape), `saliency` or `hand`. Framing `rules`
+  swaps the face-centre rule for `centred` (the eye line on the upper third),
+  or for `look room` in a wide frame when the face is turned. The MCP argument
+  is `framing` (`centre` or `rules`, default `centre`); the CLI flag is
+  `--framing`. Either way a rule gives the crop's starting point, and the head
+  and room checks above still decide where it lands (`eye_line` and `third_px`
+  report where).
+- **Require native:** the MCP argument `require_native` (boolean) and the CLI
+  flag `--require-native` flag every crop below native resolution, not only
+  the ones a zoom pushed below it.
+
+**True resolution.** `native()` counts the file's own pixels under a crop and
+divides by the deliverable: `margin` is the smaller of columns over width and
+rows over height. A margin of 1 is exactly native, and below 1 the crop is
+upscaled by `1 / margin`. `max_zoom` is the margin of the crop that just fills
+the frame: the most you can zoom over fill and stay native. Without
+`require_native`, a crop is flagged only when the source is native at fill and
+the crop's zoom loses it. With it, every crop below native is flagged.
+
+Deliverables: 9x16 is 2160x3840, 16x9 is 3840x2160, 1x1 is 2160x2160, 4x5 is
+2160x2700, and master is the timeline's own size. For an anamorphic file the
+columns are counted in the file's pixels: the desqueezed width divided by the
+squeeze.
+
+`framing_rules.limits()` computed these. The 16:9 and 9:16 columns give the
+widest crop's file pixels and `max_zoom`.
+
+| Body and mode | File | Squeeze | 16:9 crop (file px) | 16:9 max zoom | 9:16 crop (file px) | 9:16 max zoom |
+|---|---|---|---|---|---|---|
+| PYXIS 6K, 6K open gate | 6048x4032 | 1 | 6048x3402 | 1.575 | 2268x4032 | 1.05 |
+| PYXIS 6K, open gate, 1.5x lens (2.25:1) | 6048x4032 | 1.5 | 4779x4032 | 1.244 | 1512x4032 | 0.7, below native |
+| PYXIS 6K, anamorphic 6:5 | 4832x4032 | 1.5 | 4779x4032 | 1.244 | 1512x4032 | 0.7, below native |
+| PYXIS 6K, anamorphic 6:5 | 4832x4032 | 2 | 3584x4032 | 0.933, below native | 1134x4032 | 0.525, below native |
+| PYXIS 6K, 6K 16:9 | 6048x3408 | 1 | 6048x3402 | 1.575 | 1917x3408 | 0.887, below native |
+| PYXIS 6K, 6K DCI 17:9 | 6048x3200 | 1 | 5689x3200 | 1.481 | 1800x3200 | 0.833, below native |
+| S5II, 6K open gate (3:2) | 5952x3968 | 1 | 5952x3348 | 1.55 | 2232x3968 | 1.033 |
+| S5II, open gate, 1.5x lens | 5952x3968 | 1.5 | 4703x3968 | 1.225 | 1488x3968 | 0.689, below native |
+| S5II, 5.9K 16:9 | 5888x3312 | 1 | 5888x3312 | 1.533 | 1863x3312 | 0.863, below native |
+| S5II, 6K 17:9 | 5952x3136 | 1 | 5575x3136 | 1.452 | 1764x3136 | 0.817, below native |
+
+Sizes are from the manufacturers' spec pages: [Blackmagic PYXIS tech
+specs](https://www.blackmagicdesign.com/products/blackmagicpyxis/techspecs) and
+Panasonic's [S5II](https://help.na.panasonic.com/?p=415581) and
+[S5IIX](https://help.na.panasonic.com/?p=415721) pages. Resolve reads the
+PYXIS open gate as 6048x4032, matching the Blackmagic row. The PYXIS page lists
+the 6:5 anamorphic size but no squeeze, so the 1.5x and 2x rows are examples of
+a lens, not a camera setting. The S5II records no anamorphic mode of its own:
+its desqueeze is a display aid only, so its files carry no squeeze tag. Give
+`squeeze` yourself.
+
+**The framing rules, and how far to trust them.**
+
+- **Eye line at about a third from the top.** A convention: one source puts 33%
+  as the ideal and 28% as "a subtle lack of headroom" ([Wikipedia, Headroom
+  (photographic framing)](https://en.wikipedia.org/wiki/Headroom_(photographic_framing))).
+  It is not a measurement.
+- **Look room on the third line.** The face centre goes on the third line
+  away from where it looks, so two thirds of the frame lie in front of it.
+  This is derived from the thirds. No source gave a number for look room.
+- **Shot size** (ECU, CU, MCU, MS, MLS, FS, WS) comes from the head's share of
+  the frame height, with cut points at 0.75, 0.42, 0.29, 0.20, 0.135 and 0.09.
+  They are derived from body proportions (about 7.5 heads tall), not measured.
+  The label describes a crop and never fails it.
+- **`EYE_DROP`** (0.2 face heights from the top of Vision's box to the eyes) is
+  an estimate.
+- **Look direction** is Vision's yaw. Its sign is unconfirmed on a real frame
+  (`LOOK_CONFIRMED` is `False`), so a look-room crop is flagged for a person.
+- **Edges.** A second face cut by the crop's edge is flagged. So is an edge
+  band (4% of the crop) at 1.6 times the crop's mean luma and at least 96 of
+  255: a screen, a window, a lamp. These describe and never move a crop.
+- **9:16 platform safe zones** are third-party figures and are not implemented.
+
+Every framing choice still goes to a person through the review loop before
+`reframe_apply`.
+
 The order on a live project: `reframe_plan` with `items` (offline) writes
 the framing plan, `duplicate_timeline_auto` makes the ` [auto]` copy, then
 `reframe_apply` writes the plan onto it, dry run first.

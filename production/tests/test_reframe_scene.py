@@ -192,7 +192,7 @@ class TestPlanWithScene(unittest.TestCase):
         self.assertIn("composition", e)
         self.assertTrue(copy["reframe_plan"]["scene"])
         cols = reframe.tsv(rows).splitlines()[0].split("\t")
-        self.assertEqual(cols, list(reframe.COLUMNS + reframe.SCENE_COLUMNS))
+        self.assertEqual(cols, list(reframe.COLUMNS + reframe.SCENE_COLUMNS + reframe.FRAMING_COLUMNS))
 
     def test_plan_without_scene_is_unchanged(self):
         a = reframe.plan(self.m, reader=FakeReader(), detect=fake_detect)
@@ -202,7 +202,7 @@ class TestPlanWithScene(unittest.TestCase):
         self.assertEqual(json.dumps(a, sort_keys=True), json.dumps(b, sort_keys=True))
         self.assertIn("scene reads unavailable", reframe.summary({**a, "scene": False}))
         self.assertNotIn("scene reads unavailable", reframe.summary(a))
-        self.assertEqual(reframe.tsv(a["rows"]).splitlines()[0].split("\t"), list(reframe.COLUMNS))
+        self.assertEqual(reframe.tsv(a["rows"]).splitlines()[0].split("\t"), list(reframe.COLUMNS + reframe.FRAMING_COLUMNS))
         self.assertNotIn("scene", reframe.apply(self.m, a)["reframe_plan"])
 
     def test_framing_plan_says_when_scene_reads_are_unavailable(self):

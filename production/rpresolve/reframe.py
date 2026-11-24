@@ -116,7 +116,7 @@ import statistics
 import subprocess
 import tempfile
 
-from . import composition, cutlist, vision
+from . import composition, cutlist, framing_rules, vision
 from . import scene as scenemod
 from .detect import DetectError, cropped_size, fit_frame, run_ffprobe
 
@@ -731,7 +731,8 @@ def no_crop(samples, aspects, reason, area=None):
 def plan_span(samples, src, area, aspects, scale=DEFAULT_SCALE, speaker_x=None, margin=MARGIN,
               allow_bars=False, min_checked=MIN_CHECKED_SHARE, subject_region=None,
               min_face_height=None, speaker_y=None, prefer=PREFER_PRESENT, master_size=None,
-              scaling=SCALE_TO_FIT, scene=None):
+              scaling=SCALE_TO_FIT, scene=None, framing="centre", stored=None, lumas=None,
+              require_native=False):
     """samples: [(t, [Vision box])] for one span; area: the picture area or
     None (every sample black). Returns {samples, face_samples, area, face,
     rule, review, tracks, ignored, track, off_track, unchecked, aspects:
@@ -744,15 +745,21 @@ def plan_span(samples, src, area, aspects, scale=DEFAULT_SCALE, speaker_x=None, 
     sample, or None: with it, a span with no face is cropped on the saliency
     centre, a tie between faces is broken toward it, and the span and each
     crop record composition numbers and a move type (composition.py);
-    without it nothing changes."""
+    without it nothing changes. framing: "centre" (the face centre) or
+    "rules" (framing_rules.choose); either way each crop carries a
+    "framing" record: subject, rule, shot size, eye line, the file's pixels
+    under it against the deliverable, edges. stored: the file's own size
+    (default src); lumas: (luma_size, [grey frames]) for the edge check."""
     ignored = 0
     kept = []
+    yaw = {}
     for t, faces in samples:
         boxes_t = []
         for f in faces:
             b = box_px(f, src)
             if admit(b, src, subject_region, min_face_height):
                 boxes_t.append(b)
+                yaw[(t, b)] = f.get("yaw")
             else:
                 ignored += 1
         kept.append((t, boxes_t))
@@ -761,8 +768,11 @@ def plan_span(samples, src, area, aspects, scale=DEFAULT_SCALE, speaker_x=None, 
     hint = (sc["centre"]["x"], sc["centre"]["y"]) if sc else None
     pick, rule, note = choose(tracks, speaker_x, speaker_y, prefer, hint)
     if pick is None and sc and area is not None and not ignored:
-        return _scene_span(sc, samples, src, area, aspects, scale, margin, allow_bars,
-                           min_checked, master_size, scaling, ignored)
+        out = _scene_span(sc, samples, src, area, aspects, scale, margin, allow_bars,
+                          min_checked, master_size, scaling, ignored)
+        _record_framing(out, src, stored, area, "saliency", None, (), lumas, framing,
+                        require_native)
+        return out
     if area is None or pick is None:
         why = ("every sampled frame is black" if area is None else
                f"no face in any of the {len(samples)} sampled frames" if not ignored else
@@ -796,6 +806,9 @@ def plan_span(samples, src, area, aspects, scale=DEFAULT_SCALE, speaker_x=None, 
         out["review"].append(f"no face is checked at {_times(unchecked)} ({len(unchecked)} of "
                              f"{len(samples)} samples): the face may leave the crop there")
     boxes = sorted(primary + stray, key=lambda r: r[0])
+    look = framing_rules.look_of(framing_rules.median_yaw([yaw.get((t, b)) for t, b in primary]))
+    if look:
+        out["look"] = look
     edge = [t for t, b in boxes   # a source pixel of overshoot is Vision's float noise, not an edge
             if b[0] < area[0] - EDGE_NOTE_PX or b[1] < area[1] - EDGE_NOTE_PX
             or b[2] > area[2] + EDGE_NOTE_PX or b[3] > area[3] + EDGE_NOTE_PX]
@@ -804,10 +817,21 @@ def plan_span(samples, src, area, aspects, scale=DEFAULT_SCALE, speaker_x=None, 
             f"the face box reaches past the edge of the picture at {_times(edge)}: the crop "
             "keeps the face but not the usual margin there")
     for a in aspects:
-        out["aspects"][a] = plan_aspect(boxes, (st["x"], st["y"]), src, area, a, scale, margin,
+        size = size_of(a, master_size)
+        rule = framing_rules.choose(size, "face", look if framing == "rules" else None,
+                                    anchor_of(a) == ANCHOR_MIDDLE, framing)
+        # shortcut: the rule's point is worked out at the first scale tried; a fallback scale
+        # reuses it (lift and place still keep the head and the picture), fine for AUTO
+        first = fill_scale(size, area) if scale == AUTO else float(scale)
+        point = framing_rules.target(rule, out["face"], size, first, look)
+        out["aspects"][a] = plan_aspect(boxes, point, src, area, a, scale, margin,
                                         allow_bars, samples=len(samples), min_checked=min_checked,
-                                        out=size_of(a, master_size), anchor=anchor_of(a),
-                                        scaling=scaling)
+                                        out=size, anchor=anchor_of(a), scaling=scaling)
+        out["aspects"][a]["rule"] = rule
+    others = [tuple(statistics.median(b[i] for _, b in tr) for i in range(4))
+              for k, tr in enumerate(tracks) if k != pick]
+    _record_framing(out, src, stored, area, "face", out["face"], others, lumas, framing,
+                    require_native)
     if sc:
         heads = [(t, (b[0], b[1] - HEAD_ABOVE * (b[3] - b[1]), b[2], b[3])) for t, b in boxes]
         _record_scene(out, sc, "face", heads, src, [_centre(b) for _, b in boxes])
@@ -826,6 +850,25 @@ def _record_scene(out, sc, subject, boxes, src, path):
             p["move_type"] = move
             p["composition"] = composition.compose(boxes, p["out"], p["scale"], (p["x"], p["y"]),
                                                    src, move)
+
+
+def _record_framing(out, src, stored, area, subject, face, others, lumas, framing,
+                    require_native=False):
+    """Put framing_rules.record on every crop of a span that carries one, and
+    its review lines on the span."""
+    luma_size, frames = lumas if lumas else (None, None)
+    for a, p in out["aspects"].items():
+        rule = p.pop("rule", None)
+        if p["status"] not in APPLIED or p.get("x") is None:
+            continue
+        rule = rule or framing_rules.choose(p["out"], subject, None,
+                                                           anchor_of(a) == ANCHOR_MIDDLE, framing)
+        rec, review = framing_rules.record(p, a, src, stored or src, subject, rule, face,
+                                           out.get("look") if rule == framing_rules.LOOK_ROOM
+                                           else None, others, frames, luma_size,
+                                           fill_scale(p["out"], area), require_native)
+        p["framing"] = rec
+        out["review"].extend(review)
 
 
 def _scene_span(sc, samples, src, area, aspects, scale, margin, allow_bars, min_checked,
@@ -1131,7 +1174,8 @@ def plan(manifest, aspects=("9x16", "1x1"), samples=DEFAULT_SAMPLES, per_second=
          speaker_x=None, only=None, allow_bars=False, reader=None, detect=None, check_cancel=None,
          progress=None, min_checked=MIN_CHECKED_SHARE, subject_region=None, min_face_height=None,
          speaker_y=None, prefer=PREFER_PRESENT, master_size=None, scaling=SCALE_TO_FIT,
-         squeeze=None, scene=None, cuts=span_cuts):
+         squeeze=None, scene=None, cuts=span_cuts, framing="centre", keep_lumas=False,
+         require_native=False):
     """Plan every span of the manifest's clips (or only those named).
     reader: a SourceReader (default: the manifest's source); detect:
     images -> {path: [Vision box]} or None (default: vision.face_boxes).
@@ -1152,6 +1196,10 @@ def plan(manifest, aspects=("9x16", "1x1"), samples=DEFAULT_SAMPLES, per_second=
     cuts: (path, in, out) -> source times of hard cuts inside a span, or None
     (default span_cuts, run on a reader that has a path); a span with a cut
     gets a review note and a "cuts" list. Report only: the crop is not changed.
+    framing: "centre" or "rules" (plan_span); require_native: flag every crop
+    below native resolution, not only one whose zoom lost it. keep_lumas: leave each span's
+    (luma_size, grey frames) on it as "lumas" for the caller to pop (plan_items'
+    hand crops); never in a report that is written.
     Returns the report: {source, size, aspects, samples, per_second,
     speaker_x, speaker_y, rule, margin, min_checked, subject_region,
     min_face_height, prefer, spans: [...], rows: [...], counts}."""
@@ -1166,6 +1214,9 @@ def plan(manifest, aspects=("9x16", "1x1"), samples=DEFAULT_SAMPLES, per_second=
     subject_region = _subject_args(min_checked, subject_region, min_face_height, prefer)
     if speaker_y is not None and speaker_x is None:
         raise ReframeError("speaker_y names a point only together with speaker_x")
+    if framing not in framing_rules.MODES:
+        raise ReframeError(f"framing must be one of {', '.join(framing_rules.MODES)} "
+                           f"(got {framing!r})")
     clips = manifest["clips"]
     if only:
         missing = set(only) - {c["name"] for c in clips}
@@ -1201,7 +1252,8 @@ def plan(manifest, aspects=("9x16", "1x1"), samples=DEFAULT_SAMPLES, per_second=
               "aspects": list(aspects),
               "samples": samples, "per_second": per_second, "speaker_x": speaker_x,
               "speaker_y": speaker_y, "rule": rule, "margin": MARGIN,
-              "allow_bars": bool(allow_bars), "min_checked": min_checked,
+              "allow_bars": bool(allow_bars), "min_checked": min_checked, "framing": framing,
+              "require_native": bool(require_native),
               "subject_region": list(subject_region) if subject_region else None,
               "min_face_height": min_face_height, "prefer": prefer, "spans": []}
     read_scene = scenemod.read if scene is True else scene
@@ -1239,7 +1291,11 @@ def plan(manifest, aspects=("9x16", "1x1"), samples=DEFAULT_SAMPLES, per_second=
                                    min_checked=min_checked, subject_region=subject_region,
                                    min_face_height=min_face_height, speaker_y=speaker_y,
                                    prefer=prefer, master_size=master_size, scaling=scaling,
-                                   scene=reads if any(r for _, r in reads) else None)
+                                   scene=reads if any(r for _, r in reads) else None,
+                                   framing=framing, stored=stored,
+                                   require_native=require_native, lumas=(luma_size, [luma for _, _, luma in frames]))
+                    if keep_lumas:
+                        sp["lumas"] = (luma_size, [luma for _, _, luma in frames])
                     if sp.get("scene"):
                         report["scene"] = True
                 else:
@@ -1288,7 +1344,7 @@ def entry(aspect_plan, src, area, face, review):
          "inside": [p["check"]["inside"], p["check"]["total"]] if p["check"] else None,
          "move": p.get("move"),
          "headroom_px": p.get("headroom_px")}
-    for k in ("move_type", "composition", "source"):
+    for k in ("move_type", "composition", "source", "framing"):
         if k in p:
             e[k] = p[k]
     if p.get("out"):
@@ -1323,7 +1379,8 @@ def apply(manifest, report):
                                                     "aspects", "samples", "per_second",
                                                     "speaker_x", "speaker_y", "rule", "margin",
                                                     "allow_bars", "min_checked", "subject_region",
-                                                    "min_face_height", "prefer")}
+                                                    "min_face_height", "prefer", "framing",
+                                                    "require_native")}
     if report.get("scene"):
         m["reframe_plan"]["scene"] = True
     return m
@@ -1336,6 +1393,8 @@ COLUMNS = ("clip", "span", "in", "out", "aspect", "status", "review", "samples",
 
 
 SCENE_COLUMNS = ("move_type", "lead_px", "negative_space", "safe")  # after COLUMNS when a plan used scene reads
+FRAMING_COLUMNS = ("subject", "rule", "shot", "look", "eye_line", "third_px", "native_px",
+                   "deliver", "margin", "max_zoom", "edges")  # last, when any crop carries framing
 
 TILT_NOTE = ("Tilt {tilt:g} assumes Resolve's y axis points up, which no render has confirmed "
              "yet: check a still before trusting this crop")
@@ -1372,7 +1431,19 @@ def rows(report):
             if "move_type" in p:
                 out[-1].update(move_type=p["move_type"], **{k: p["composition"][k]
                                                               for k in SCENE_COLUMNS[1:]})
+            if p.get("framing"):
+                out[-1].update(framing_row(p["framing"]))
     return out
+
+
+def framing_row(f):
+    """The FRAMING_COLUMNS of a crop's framing record."""
+    n = f["native"]
+    return {"subject": f["subject"], "rule": f["rule"], "shot": f.get("shot"),
+            "look": f.get("look"), "eye_line": f.get("eye_line"), "third_px": f.get("third_px"),
+            "native_px": f"{n['cols']}x{n['rows']}", "deliver": "x".join(map(str, n["deliver"])),
+            "margin": n["margin"], "max_zoom": f.get("max_zoom"), "edges": "; ".join(f["edges"]),
+            "native": n["native"]}
 
 
 def counts(rows):
@@ -1380,6 +1451,7 @@ def counts(rows):
     for r in rows:
         n[r["status"]] += 1
     n["review"] = sum(1 for r in rows if r["review"])
+    n["below_native"] = sum(1 for r in rows if r.get("native") is False)
     n["tilt"] = 0 if TILT_CONFIRMED else sum(1 for r in rows if r["status"] in APPLIED
                                              and abs(r["tilt"] or 0.0) > TILT_NEGLIGIBLE_PX)
     return n
@@ -1394,7 +1466,8 @@ def needs_person(rows):
 def tsv(rows_):
     def cell(v):
         return "" if v is None else " ".join(str(v).split())
-    cols = COLUMNS + (SCENE_COLUMNS if any("move_type" in r for r in rows_) else ())
+    cols = COLUMNS + (SCENE_COLUMNS if any("move_type" in r for r in rows_) else ()) + \
+        (FRAMING_COLUMNS if any("subject" in r for r in rows_) else ())
     return "\n".join(["\t".join(cols)] +
                      ["\t".join(cell(r.get(k)) for k in cols) for r in rows_]) + "\n"
 
@@ -1405,6 +1478,8 @@ def summary(report):
             f"{n[PASS]} pass, {n[FALLBACK]} fallback (widest filled scale), {n[MANUAL]} manual, "
             f"{n[NO_FACE]} no face" + (f", {n[SCENE]} scene crop, no face seen: look" if n[SCENE] else "") + (f", {n[BARS]} kept with bars" if n[BARS] else "") +
             (f", {n[HAND]} by hand" if n[HAND] else "") +
+            (f"; {n['below_native']} with fewer source pixels than the deliverable"
+             if n.get("below_native") else "") +
             (f"; {n['review']} flagged for review" if n["review"] else "") +
             (f"; {n['tilt']} set a Tilt, whose sign no render has confirmed yet (check a still)"
              if n.get("tilt") else "") +
@@ -1428,6 +1503,13 @@ def line(r):
         parts.append(f"inside {r['inside']}/{r['samples']}" +
                      (f" ({r['unchecked']} unchecked)" if r["unchecked"] else "") +
                      f" worst {r['worst_px']} px")
+    if r.get("subject"):
+        parts.append(f"subject {r['subject']}" + (f" {r['shot']}" if r.get("shot") else "") +
+                     (f" looking {r['look']}" if r.get("look") else "") + f", rule {r['rule']}" +
+                     (f", eye line {r['eye_line']:g}" if r.get("eye_line") is not None else ""))
+        parts.append(f"{r['native_px']} under {r['deliver']} margin {r['margin']:g}" +
+                     (f" (native to zoom {r['max_zoom']:g})" if r.get("max_zoom") else "") +
+                     ("" if r.get("native") else f" BELOW {r['deliver']}"))
     text = "  ".join(parts)
     if r["reason"]:
         text += f"  | {r['reason']}"
@@ -1525,10 +1607,11 @@ def plan_items(items, aspect=MASTER, master_size=None, scaling=SCALE_TO_FIT, rea
         m = {"source_path": path, "squeeze": it.get("squeeze"),
              "clips": [{"name": name, "spans": [{"in": a, "out": b}]}]}
         rep = plan(m, aspects=[aspect], reader=reader, master_size=master_size, scaling=scaling,
-                   **kw)
+                   keep_lumas=n in hand, **kw)
         if rep.get("scene"):
             plan_["scene"] = True
         sp = rep["spans"][0]
+        lumas = sp.pop("lumas", None)
         p = sp["aspects"][aspect]
         if n in hand:
             if sp["area"]:
@@ -1543,6 +1626,14 @@ def plan_items(items, aspect=MASTER, master_size=None, scaling=SCALE_TO_FIT, rea
                     sp["hand_face_x"] = round(hand[n][0] * rep["size"][0], 1)
                 sp["review"].append("framed by hand: no head check (headroom and whole head do "
                                     "not apply); look at the frame")
+                # the replaced crop's framing lines describe a crop that is not written
+                sp["review"] = [r for r in sp["review"] if not r.startswith(f"{aspect}: ")]
+                luma_size, frames = lumas or (None, None)
+                p["framing"], more = framing_rules.record(
+                    p, aspect, rep["size"], rep["stored_size"], "hand", framing_rules.HAND,
+                    lumas=frames, luma_size=luma_size, fill=fill_scale(out, sp["area"]),
+                    require_native=kw.get("require_native", False))
+                sp["review"].extend(more)
             else:
                 sp["review"].append("hand entry not used: no picture area (every sampled frame "
                                     "is black)")

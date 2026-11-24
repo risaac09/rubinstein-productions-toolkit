@@ -4,7 +4,8 @@
 // Usage: vision_faces [--landmarks] IMAGE...
 // Output: one JSON object per image, one per line:
 //   {"path": "...", "width": W, "height": H,
-//    "faces": [{"x": 0.41, "y": 0.18, "w": 0.21, "h": 0.30, "confidence": 0.87}]}
+//    "faces": [{"x": 0.41, "y": 0.18, "w": 0.21, "h": 0.30, "confidence": 0.87,
+//               "yaw": 0.52}]}   (yaw in radians, when Vision gives one)
 // Boxes are normalized with the origin at the TOP left (Vision's own origin
 // is bottom left; it is flipped here so callers index image rows directly).
 // --landmarks (first argument) adds to each face
@@ -48,6 +49,7 @@ for path in paths {
         let b = face.boundingBox
         var d: [String: Any] = ["x": Double(b.minX), "y": Double(1 - b.maxY), "w": Double(b.width),
                                 "h": Double(b.height), "confidence": Double(face.confidence)]
+        if let yaw = face.yaw { d["yaw"] = yaw.doubleValue }  // radians; sign: framing_rules.LOOK_CONFIRMED
         if wantLandmarks, let l = face.landmarks {
             var marks: [String: Any] = [:]
             for (name, region) in [("leftEye", l.leftEye), ("rightEye", l.rightEye), ("outerLips", l.outerLips)] {
