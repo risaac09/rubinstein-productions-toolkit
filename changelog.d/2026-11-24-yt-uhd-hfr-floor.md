@@ -1,0 +1,1 @@
+deliver_check's video_bitrate floor on the YouTube UHD destinations (youtube_16x9, youtube_16x9_music, youtube_9x16) rises from 35 to 53 Mb/s when ffprobe reads over 30 fps, YouTube's lowest figure for 48-60 fps; 30 fps and below keep 35 Mb/s. New expect.min_video_kbps_hfr.

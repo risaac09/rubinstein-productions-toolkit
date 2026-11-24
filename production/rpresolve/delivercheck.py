@@ -16,7 +16,7 @@ what it expected:
     fps_constant  average and nominal frame rate agree (no VFR)
     pix_fmt       chroma family and bit depth, where the destination fixes them
     video_bitrate expect.min_video_kbps (YouTube's lowest recommended upload
-                  rate): WARN under, never FAIL; SKIP with none, still showing
+                  rate; min_video_kbps_hfr instead above 30 fps): WARN under, never FAIL; SKIP with none, still showing
                   the bit rate ffprobe read
     video_bitrate_max, file_size, duration
                   the platform ceilings a destination's expect block states
@@ -920,6 +920,9 @@ def _bitrate(video, exp):
     render of a still picture may sit low on its own, but a render far under
     it means the Deliver page's bit rate did not take."""
     floor = exp.get("min_video_kbps")
+    r_rate = rate(video.get("r_frame_rate"))
+    if exp.get("min_video_kbps_hfr") is not None and r_rate and r_rate > 30:
+        floor = exp["min_video_kbps_hfr"]  # YouTube's 48-60 fps band asks more than 24-30
     kbps = _kbps(video)
     if floor is None:
         return _row("video_bitrate", None, "not asserted" if kbps is None else f"{kbps:g} kbps",

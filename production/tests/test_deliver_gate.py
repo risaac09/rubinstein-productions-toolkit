@@ -143,6 +143,14 @@ class TestGate(unittest.TestCase):
         r = dc.check(path, dest, size=(64, 36), loudness=False)
         self.assertEqual((failed(r), statuses(r)["video_bitrate"]), ([], dc.WARN))
 
+    def test_high_frame_rate_raises_the_floor(self):
+        exp = {"min_video_kbps": 35000, "min_video_kbps_hfr": 53000}
+        v = lambda rate, kbps: {"r_frame_rate": rate, "bit_rate": str(kbps * 1000)}  # noqa: E731
+        self.assertEqual(dc._bitrate(v("30/1", 36000), exp)["status"], dc.PASS)  # 4K30 at 36
+        self.assertEqual(dc._bitrate(v("60/1", 36000), exp)["status"], dc.WARN)  # 4K60 at 36
+        self.assertEqual(dc._bitrate(v("60/1", 54000), exp)["status"], dc.PASS)
+        self.assertEqual(dc._bitrate(v("60/1", 36000), {"min_video_kbps": 35000})["status"], dc.PASS)
+
     def test_platform_limits_warn_and_never_fail(self):
         path = make(self.path(VERT), size="36x64", rate="30000/1001", lufs=-14.0)
         dest = tiny("social_9x16")
@@ -172,6 +180,7 @@ class TestPlatformValues(unittest.TestCase):
         for k in ("youtube_16x9", "youtube_16x9_music", "youtube_9x16"):
             self.assertEqual((d[k]["resolve"]["VideoQuality"], d[k]["audio"]["bitrate_kbps"],
                               d[k]["expect"]["min_video_kbps"]), (60000, 384, 35000), k)
+            self.assertEqual(d[k]["expect"]["min_video_kbps_hfr"], 53000, k)
         self.assertEqual((d["youtube_16x9_hd"]["resolve"]["VideoQuality"],
                           d["youtube_16x9_hd"]["expect"]["min_video_kbps"]), (16000, 8000))
         for k, x in d.items():

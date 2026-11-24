@@ -46,7 +46,7 @@
       "captions": "sidecar",
       "color": { "resolve": { "GammaTag": "Rec.709-A" }, "expect": { "color_transfer": "bt709" } },
       "resolve": { "NetworkOptimization": true, "VideoQuality": 60000 },
-      "expect": { "codec_name": "hevc", "profile": null, "pix_fmt_family": "420", "bit_depth": null, "min_video_kbps": 35000 }
+      "expect": { "codec_name": "hevc", "profile": null, "pix_fmt_family": "420", "bit_depth": null, "min_video_kbps": 35000, "min_video_kbps_hfr": 53000 }
     },
     "youtube_16x9_hd": {
       "name": "YouTube 16:9 HD",
@@ -162,7 +162,7 @@
       "captions": "burnin",
       "color": { "resolve": { "GammaTag": "Rec.709-A" }, "expect": { "color_transfer": "bt709" } },
       "resolve": { "NetworkOptimization": true, "VideoQuality": 60000 },
-      "expect": { "codec_name": "hevc", "profile": null, "pix_fmt_family": "420", "bit_depth": null, "min_video_kbps": 35000, "max_duration_s": 180 }
+      "expect": { "codec_name": "hevc", "profile": null, "pix_fmt_family": "420", "bit_depth": null, "min_video_kbps": 35000, "min_video_kbps_hfr": 53000, "max_duration_s": 180 }
     },
     "social_9x16_music": {
       "name": "Social 9:16, music only (TikTok, Instagram)",
@@ -210,7 +210,7 @@
       "captions": "none",
       "color": { "resolve": { "GammaTag": "Rec.709-A" }, "expect": { "color_transfer": "bt709" } },
       "resolve": { "NetworkOptimization": true, "VideoQuality": 60000 },
-      "expect": { "codec_name": "hevc", "profile": null, "pix_fmt_family": "420", "bit_depth": null, "min_video_kbps": 35000 }
+      "expect": { "codec_name": "hevc", "profile": null, "pix_fmt_family": "420", "bit_depth": null, "min_video_kbps": 35000, "min_video_kbps_hfr": 53000 }
     },
     "social_4x5": {
       "name": "Social 4:5 (TikTok, Instagram)",
