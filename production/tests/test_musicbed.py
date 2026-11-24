@@ -383,10 +383,10 @@ class TestTailRow(unittest.TestCase):
 
 
 class TestConfig(unittest.TestCase):
-    def test_only_the_music_montage_destination_asks_for_the_tail_row(self):
+    def test_only_the_music_montage_destinations_ask_for_the_tail_row(self):
         asking = [k for k in deliver.destination_keys(CFG)
                   if deliver.destination(CFG, k).get("tail_fade")]
-        self.assertEqual(asking, ["social_9x16_music"])
+        self.assertEqual(asking, ["social_9x16_music", "youtube_16x9_music"])
 
 
 if __name__ == "__main__":

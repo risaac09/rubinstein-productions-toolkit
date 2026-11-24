@@ -103,6 +103,10 @@ DEFAULT_CONFIG = {
         "social_9x16_music": {**_web("Social 9:16, music only (TikTok, Instagram)", "9x16", 1080,
                                      1920, "H264", -14.0, "none"), "naming": "montage",
                               "tail_fade": True},
+        # social_9x16_music's landscape twin for YouTube: a music-only montage, no captions,
+        # the montage name and the baked music fade, at youtube_16x9's size and codec.
+        "youtube_16x9_music": {**_web("YouTube 16:9 UHD, music only", "16x9", 3840, 2160, "H265",
+                                      -14.0, "none"), "naming": "montage", "tail_fade": True},
         # Instagram's Reels page states a 30 FPS floor for every shape it takes, so 4:5 and
         # 1:1 carry min_fps as 9:16 does (platform-specs.md).
         "social_4x5": {**_web("Social 4:5 (TikTok, Instagram)", "4x5", 1080, 1350, "H264", -14.0,

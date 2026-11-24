@@ -1203,7 +1203,7 @@ def register(registry):
                               "description": "Assert the tail row: the 100 ms ending at the last "
                               "video frame at least 12 dB below the window 3 s to 1.5 s "
                               "before that frame. Default: "
-                              "the destination's tail_fade (true for social_9x16_music); "
+                              "the destination's tail_fade (true for social_9x16_music and youtube_16x9_music); "
                               "true turns it on for another destination, false off."},
               "manifest": {"type": "string",
                            "description": "Absolute path of the method manifest the file was "

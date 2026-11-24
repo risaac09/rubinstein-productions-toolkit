@@ -1642,7 +1642,7 @@ def register(registry):
                            "description": "client_master and montage destinations only."}},
                 "additionalProperties": False,
                 "description": "Show, episode, guest, index and slug; for client_master and "
-                "the montage destinations (social_9x16_music), client and slug."},
+                "the montage destinations (social_9x16_music, youtube_16x9_music), client and slug."},
             "target_dir": {"type": "string",
                            "description": "Absolute path of an existing folder outside any "
                            "git repository (default: the destination's target_dir in the "
