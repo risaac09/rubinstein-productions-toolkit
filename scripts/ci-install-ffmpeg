@@ -1,0 +1,25 @@
+#!/bin/sh
+# ci-install-ffmpeg: install ffmpeg on a CI runner (Ubuntu), bounded and retried.
+#
+# `apt-get update` sometimes hangs on a runner with no output, past apt's own
+# Acquire timeouts; a healthy update and install take under a minute together.
+# Each apt call gets a hard limit, and a call that hangs or fails is tried
+# again, up to three times in all. A hang then costs two minutes, not the job.
+set -eu
+O='-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o DPkg::Lock::Timeout=60'
+try=1
+while :; do
+  # shellcheck disable=SC2086  # $O is a word list on purpose
+  if sudo timeout 120 apt-get $O update -qq && sudo timeout 240 apt-get $O install -y -qq ffmpeg; then
+    break
+  fi
+  if [ "$try" -ge 3 ]; then
+    echo "ci-install-ffmpeg: apt failed or hung $try times" >&2
+    exit 1
+  fi
+  echo "ci-install-ffmpeg: apt failed or hung (try $try of 3); trying again" >&2
+  try=$((try + 1))
+  sleep 5
+done
+ffmpeg -version | sed -n 1p
+ffprobe -version | sed -n 1p
