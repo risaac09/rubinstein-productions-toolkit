@@ -300,7 +300,8 @@ def _framing_plan(args, ctx):
                                min_face_height=args.get("min_face_height"),
                                prefer=args["prefer"], allow_bars=args["allow_bars"],
                                scene=bool(args.get("scene")), check_cancel=ctx.check_cancel,
-                               hand=hand)
+                               hand=hand, framing=args.get("framing") or "centre",
+                               require_native=bool(args.get("require_native")))
     except BaseException:
         _drop_empty(None if args.get("out") else out)
         raise
@@ -317,6 +318,9 @@ def _framing_plan(args, ctx):
                           + (f", {n[reframe.SCENE]} scene crop (no face seen: look)"
                              if n[reframe.SCENE] else "")
                           + (f", {n[reframe.HAND]} by hand" if n[reframe.HAND] else "")
+                          + (f"; {n['below_native']} with fewer source pixels than the "
+                             "deliverable"
+                             if n.get("below_native") else "")
                           + ("; scene reads unavailable" if p.get("scene") is False else "")),
               "counts": n, "verdict": "review" if person else "pass", "plan": out,
               "tsv": stem + ".tsv"}
@@ -355,7 +359,8 @@ def reframe_plan(args, ctx):
                               prefer=args["prefer"], master_size=args.get("master_size"),
                               scaling=args["input_scaling"], squeeze=args.get("squeeze"),
                               scene=bool(args.get("scene")), check_cancel=ctx.check_cancel,
-                              progress=ctx.progress)
+                              progress=ctx.progress, framing=args.get("framing") or "centre",
+                              require_native=bool(args.get("require_native")))
     except BaseException:
         _drop_empty(None if args.get("out") else out)
         raise
@@ -1122,6 +1127,19 @@ def register(registry):
                         "and flagged, a tie between faces goes to it, and each span records "
                         "composition numbers and a move type (hold, pan or track). Off: the "
                         "plan is unchanged."},
+              "framing": {"type": "string", "enum": ["centre", "rules"], "default": "centre",
+                          "description": "centre: the crop starts on the face centre (as "
+                          "before). rules: on the eye line at the upper third, and in a wide "
+                          "frame a face turned away from camera on the third line behind its "
+                          "look. Either way each crop records its subject, rule, shot size, the "
+                          "file's pixels under it against the UHD deliverable (margin, and the "
+                          "largest zoom over fill that stays native) and distractions at its "
+                          "edge."},
+              "require_native": {"type": "boolean", "default": False,
+                                 "description": "Flag every crop below native resolution for "
+                                 "its deliverable (2160x3840 for 9x16, 3840x2160 for 16x9). "
+                                 "Off: flagged only when the source is native at fill and the "
+                                 "crop's zoom loses it."},
               "allow_bars": {"type": "boolean", "default": False,
                              "description": "Try the Ep 002 punch-in (2.25) first when the clip "
                              "names no scale, and keep it when it holds the face but leaves "

@@ -51,6 +51,11 @@ def add_arguments(p):
                    help="Try the Ep 002 punch-in (2.25) first when a clip names no scale, and "
                         "keep it when it holds the face though the picture does not fill the "
                         "frame (black bars); such crops are named 'bars'")
+    p.add_argument("--framing", choices=["centre", "rules"], default="centre",
+                   help="centre: start on the face centre (default); rules: eye line on the "
+                        "upper third, look room for a turned face in a wide frame")
+    p.add_argument("--require-native", action="store_true",
+                   help="Flag every crop below native resolution for its UHD deliverable")
     p.add_argument("--out", required=True,
                    help="The manifest copy with per-span reframes (refused inside this repo); "
                         "the report goes beside it as <stem>.reframe.tsv and .json")
@@ -87,6 +92,8 @@ def run(args):
                               min_face_height=getattr(args, "min_face_height", None),
                               prefer=getattr(args, "prefer", reframe.PREFER_PRESENT),
                               scene=bool(getattr(args, "scene", False)),
+                              framing=getattr(args, "framing", "centre"),
+                              require_native=bool(getattr(args, "require_native", False)),
                               progress=lambda d, n: print(f"  span {d} of {n}", file=sys.stderr))
     except (cutlist.CutlistError, reframe.ReframeError, OSError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
