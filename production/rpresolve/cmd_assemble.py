@@ -166,6 +166,17 @@ def plan(manifest, exclude=None):
             raise Refused("music_gain_db is the level of the music bed: set music")
         if isinstance(gain, bool) or not isinstance(gain, (int, float)) or not -40 <= gain <= 12:
             raise Refused("music_gain_db is a number from -40 to 12 (dB)")
+    mlufs = manifest.get("music_lufs")
+    if mlufs is not None:
+        if not music:
+            raise Refused("music_lufs is the level of the music bed: set music")
+        if sound:
+            raise Refused("music_lufs sets the music alone; with camera_sound the mix is "
+                          "levelled by camera_sound_lufs and music_gain_db and checked as `mix`")
+        if gain is not None:
+            raise Refused("music_lufs and music_gain_db both set the bed's gain: give one")
+        if isinstance(mlufs, bool) or not isinstance(mlufs, (int, float)) or not -40 <= mlufs <= -5:
+            raise Refused("music_lufs is a number from -40 to -5 (LUFS)")
     fade = manifest.get("camera_sound_fade_s")
     if fade is not None:
         if not sound:
@@ -179,7 +190,7 @@ def plan(manifest, exclude=None):
             "music": {"path": music["path"], "in": float(music.get("in") or 0)} if music else None,
             "track": 2 if any(r.get("plate") for r in spans) else 1,
             "sound": sound, "sound_lufs": lufs, "music_gain_db": float(gain or 0),
-            "sound_fade_s": fade, "squeeze": squeeze,
+            "music_lufs": mlufs, "sound_fade_s": fade, "squeeze": squeeze,
             "not_built": not_built, "exclude": ex,
             "exclude_note": cutlist.exclude_note(ex)}
 
@@ -451,17 +462,20 @@ def apply_assemble(resolve, project_name, name, manifest, width=SIZE[0], height=
     streams = camera_streams(p, {c.GetClipProperty("File Path") for c in
                                  folder.GetClipList() or []} if folder else ()) if p["sound"] else []
     tl_colour = {k: str(project.GetSetting(k) or "") for k in cm.TIMELINE_COLOUR_KEYS}
+    music_lvl = music_level(p, bed_plan(p, manifest, bed_dir, tl_fps)) if p["music_lufs"] is not None else None
+    if music_lvl:
+        p["music_gain_db"] = music_lvl["gain_db"]
     bed = bed_plan(p, manifest, bed_dir, tl_fps)
     tail = tail_plan(p, bed_folder(manifest, bed_dir), tl_fps) if p["sound_fade_s"] else None
     mix = (mix_peak(p, bed, level, tail) if bed and p["sound"]
            else bed_peak(bed) if bed and p["music_gain_db"] > 0 else None)
     plates = plate_handles(p)
     sha = plan_sha("assemble", pin.unique_id, name, rate, width, height, p, colour, bed, plates,
-                   report, tl_colour, desqueeze, level, tail, mix, fps is not None)
+                   report, tl_colour, desqueeze, level, tail, mix, music_lvl, fps is not None)
     out = {"project": {"name": pin.name, "id": pin.unique_id}, "timeline": name, "rate": rate,
            "size": [width, height], "track": p["track"], "plan": p, "colour": colour,
            "timeline_colour": tl_colour, "desqueeze": desqueeze, "shape": shape,
-           "camera_level": level, "camera_streams": streams, "camera_tail": tail, "mix": mix, "plates": plates, "exclude": p["exclude"], "exclude_note": p["exclude_note"],
+           "camera_level": level, "camera_streams": streams, "music_level": music_lvl, "camera_tail": tail, "mix": mix, "plates": plates, "exclude": p["exclude"], "exclude_note": p["exclude_note"],
            "bed": bed and {**bed, "result": "would reuse" if os.path.isfile(bed["path"])
                            else "would bake"},
            "plan_sha": sha, "ledger": report,
@@ -477,6 +491,8 @@ def apply_assemble(resolve, project_name, name, manifest, width=SIZE[0], height=
                       "again and review it")
     if bed:
         out["bed"]["result"] = _bake(bed)
+        if music_lvl:
+            read_back_music(music_lvl, bed["path"])
     if tail:
         out["camera_tail"]["result"] = _bake(tail, camera=True)
     snap = api.UISnapshot(resolve, project)
@@ -965,9 +981,9 @@ def mix_peak(p, bed, level, tail=None):
             "ceiling": PEAK_CEILING_DBTP}
 
 
-def bed_peak(bed):
-    """mix_peak for a bed alone: a music bed with a gain above 0 dB and no camera sound. The
-    bed is a 24-bit PCM file, so a boost past full scale would be baked in as clipping."""
+def _read_bed(bed):
+    """{integrated_lufs, true_peak_dbtp} of the bed as bake() would write it: the span's source
+    range, its gain and its fade, read by ffmpeg's ebur128. Raises Refused."""
     try:
         dc.check_tools()
         proc = dc._run([dc.FFMPEG, "-hide_banner", "-nostats", "-nostdin", "-ss", f"{bed['in']:.4f}",
@@ -976,9 +992,15 @@ def bed_peak(bed):
                         + ",ebur128=peak=true:framelog=quiet", "-f", "null", "-"], dc.READ_TIMEOUT_S)
         if proc.returncode != 0:
             raise dc.CheckError(proc.stderr.strip()[-300:])
-        m = dc.parse_ebur128(proc.stderr)
+        return dc.parse_ebur128(proc.stderr)
     except (dc.ToolMissing, dc.CheckError) as e:
         raise Refused(f"the music bed could not be measured: {e}")
+
+
+def bed_peak(bed):
+    """mix_peak for a bed alone: a music bed with a gain above 0 dB and no camera sound. The
+    bed is a 24-bit PCM file, so a boost past full scale would be baked in as clipping."""
+    m = _read_bed(bed)
     tp = m["true_peak_dbtp"]
     if tp is None or tp > PEAK_CEILING_DBTP:
         raise Refused(f"music_gain_db {bed['gain_db']:+g}: the bed peaks at {tp} dBTP, above the "
@@ -988,6 +1010,46 @@ def bed_peak(bed):
 
 
 PEAK_CEILING_DBTP = -1.5  # the camera bed, after its gain, stays under this true peak
+MUSIC_PEAK_CEILING_DBTP = -2.0  # delivery: the music bed, after music_lufs' gain
+READ_BACK_TOLERANCE_LU = 0.5
+
+
+def music_level(p, bed):
+    """The one gain that puts the music bed (alone on A1) at the manifest's music_lufs, over
+    the span used, with its fade: {target, measured_lufs, true_peak_before, gain_db,
+    true_peak_after, ceiling}. Never limits: a gain that would put the true peak above
+    MUSIC_PEAK_CEILING_DBTP is refused with the numbers, so the plan says so."""
+    m = _read_bed({**bed, "gain_db": 0.0})
+    i, tp = m["integrated_lufs"], m["true_peak_dbtp"]
+    if i is None or i == float("-inf") or tp is None:
+        raise Refused("music_lufs: the music is silent over the span used")
+    gain = round(float(p["music_lufs"]) - i, 2)
+    after = round(tp + gain, 2)
+    if after > MUSIC_PEAK_CEILING_DBTP:
+        raise Refused(f"music_lufs {p['music_lufs']:g}: the bed measures {i:g} LUFS with a true "
+                      f"peak of {tp:g} dBTP, so {gain:+g} dB would put the peak at {after:g} dBTP, "
+                      f"above the {MUSIC_PEAK_CEILING_DBTP:g} dBTP ceiling. Nothing is limited "
+                      "silently: pick a flatter section of music, lower music_lufs, or limit it by hand.")
+    return {"target": float(p["music_lufs"]), "measured_lufs": i, "true_peak_before": tp,
+            "gain_db": gain, "true_peak_after": after, "ceiling": MUSIC_PEAK_CEILING_DBTP}
+
+
+def read_back_music(level, path):
+    """Measure the baked bed file and record it as level['read_back']. Refused, before
+    anything goes into Resolve, when it is unreadable, misses the target by more than
+    READ_BACK_TOLERANCE_LU or peaks above MUSIC_PEAK_CEILING_DBTP."""
+    try:
+        m = dc.measure_loudness(path)
+    except (dc.ToolMissing, dc.CheckError) as e:
+        raise Refused(f"the baked music bed could not be read back: {e}")
+    level["read_back"] = {"integrated_lufs": m["integrated_lufs"],
+                          "true_peak_dbtp": m["true_peak_dbtp"]}
+    got = m["integrated_lufs"]
+    if got is None or abs(got - level["target"]) > READ_BACK_TOLERANCE_LU \
+            or (m["true_peak_dbtp"] or 0) > MUSIC_PEAK_CEILING_DBTP:
+        raise Refused(f"the baked bed reads {got} LUFS / {m['true_peak_dbtp']} dBTP, target "
+                      f"{level['target']:g} LUFS, {MUSIC_PEAK_CEILING_DBTP:g} dBTP max; nothing "
+                      "was written to Resolve")
 
 
 def measure_bed(p):

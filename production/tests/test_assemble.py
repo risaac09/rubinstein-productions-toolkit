@@ -15,6 +15,7 @@ Run: /usr/bin/python3 -m unittest discover production/tests -v
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -1365,6 +1366,52 @@ class TestTimelineColourAndCameraSound(Base):
                             for i in snd[:-1]))
         self.assertEqual(len(tl.GetItemListInTrack("audio", 2)), 1)
 
+    def test_music_lufs_sets_the_gain_in_the_plan_and_reads_the_bed_back(self):
+        self.manifest["music_lufs"] = -14
+        reads = []
+
+        def read(bed):
+            reads.append(bed["gain_db"])
+            return {"integrated_lufs": -19.0, "true_peak_dbtp": -9.0}
+        back = {"integrated_lufs": -14.1, "true_peak_dbtp": -4.0}
+        with mock.patch.object(a, "_read_bed", read), \
+                mock.patch.object(a.dc, "measure_loudness", lambda path: back):
+            dry, r, tl = self.built()
+        self.assertEqual(reads[0], 0.0)
+        self.assertEqual(dry["music_level"], {"target": -14.0, "measured_lufs": -19.0,
+                                              "true_peak_before": -9.0, "gain_db": 5.0,
+                                              "true_peak_after": -4.0, "ceiling": -2.0})
+        self.assertEqual(self.bake_kw[-1]["gain_db"], 5.0)
+        self.assertEqual(r["music_level"]["read_back"], back)
+        self.assertEqual((r["exit_status"], r["problems"]), (0, []))
+
+    def test_music_lufs_that_would_clip_is_refused_with_the_numbers_not_limited(self):
+        self.manifest["music_lufs"] = -14
+        with mock.patch.object(a, "_read_bed",
+                               lambda bed: {"integrated_lufs": -19.0, "true_peak_dbtp": -4.0}):
+            with self.assertRaisesRegex(Refused, r"\+5 dB would put the peak at 1 dBTP.*-2 dBTP"):
+                self.go()
+
+    def test_a_baked_bed_that_misses_the_target_is_refused_before_resolve(self):
+        self.manifest["music_lufs"] = -14
+        with mock.patch.object(a, "_read_bed",
+                               lambda bed: {"integrated_lufs": -19.0, "true_peak_dbtp": -9.0}), \
+                mock.patch.object(a.dc, "measure_loudness",
+                                  lambda path: {"integrated_lufs": -16.0, "true_peak_dbtp": -4.0}):
+            dry = self.go()
+            with self.assertRaisesRegex(Refused, "reads -16.0 LUFS"):
+                self.go(dry_run=False, expect_sha=dry["plan_sha"])
+
+    def test_music_lufs_is_checked(self):
+        for extra, msg in (({"music_lufs": "loud"}, "music_lufs is a number"),
+                           ({"music_lufs": -14, "music_gain_db": -3}, "give one"),
+                           ({"music_lufs": -14, "camera_sound": True}, "music alone")):
+            self.manifest.update(extra)
+            with self.assertRaisesRegex(Refused, msg):
+                self.go()
+            for k in extra:
+                self.manifest.pop(k)
+
     def test_a_music_only_boost_is_peak_checked_and_a_cut_is_not(self):
         self.manifest["music_gain_db"] = 3
         self.assertEqual(self.go()["mix"], self.mix)
@@ -1861,3 +1908,44 @@ class TestAssembleReview2(Base):
         self.assertEqual(self.mapped(), [])
         self.assertEqual(len(r["camera_remap"]), 2)
         self.assertTrue(all("cannot be read" in x["result"] for x in r["camera_remap"]))
+
+
+@unittest.skipUnless(shutil.which("ffmpeg"), "needs ffmpeg")
+class TestMusicLevelRealAudio(unittest.TestCase):
+    """A generated noise bed (no real media): the gain music_level finds lands the baked file
+    at the target and under the true-peak ceiling, read by ffmpeg."""
+
+    def make(self, d, amp):
+        src = os.path.join(d, "noise.wav")
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i",
+                        f"anoisesrc=d=20:c=pink:r=48000:a={amp}:seed=7", "-ac", "2", src], check=True)
+        return src
+
+    def level(self, d, amp, target):
+        src = self.make(d, amp)
+        bed = a.musicbed.spec(src, 2.0, 12.0, os.path.join(d, "beds"))
+        lvl = a.music_level({"music_lufs": target}, bed)
+        return bed, lvl
+
+    def test_the_baked_bed_lands_on_the_target_and_under_the_ceiling(self):
+        with tempfile.TemporaryDirectory() as d:
+            bed, lvl = self.level(d, 0.05, -14)
+            a.musicbed.bake(bed["src"], bed["in"], bed["seconds"], bed["fade_s"], bed["path"],
+                            gain_db=lvl["gain_db"])
+            a.read_back_music(lvl, bed["path"])
+            self.assertAlmostEqual(lvl["read_back"]["integrated_lufs"], -14.0, delta=0.3)
+            self.assertLessEqual(lvl["read_back"]["true_peak_dbtp"], -2.0)
+
+    def test_a_peaky_bed_is_refused_not_limited(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = os.path.join(d, "clicks.wav")
+            # quiet noise with one full-scale click: loudness low, true peak high
+            subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i",
+                            "anoisesrc=d=20:c=pink:r=48000:a=0.02:seed=3", "-f", "lavfi", "-i",
+                            "sine=f=1000:d=0.05:r=48000", "-filter_complex",
+                            "[1:a]volume=0.99,adelay=5000|5000,apad=whole_dur=20[c];"
+                            "[0:a][c]amix=inputs=2:normalize=0,pan=stereo|c0=c0|c1=c0", src],
+                           check=True)
+            bed = a.musicbed.spec(src, 2.0, 12.0, os.path.join(d, "beds"))
+            with self.assertRaisesRegex(Refused, "Nothing is limited silently"):
+                a.music_level({"music_lufs": -14}, bed)
