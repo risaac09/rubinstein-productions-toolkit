@@ -1,0 +1,1 @@
+assemble_timeline: manifest music_lufs measures the music bed over the span used and bakes the gain that lands it on the target (refused, not limited, when the true peak would pass -2 dBTP), then reads the baked bed back

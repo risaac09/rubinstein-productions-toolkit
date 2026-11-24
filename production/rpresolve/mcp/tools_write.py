@@ -579,6 +579,19 @@ def _level_line(r):
             f"(peak {lv['true_peak_after']:g} dBTP)")
 
 
+def _music_line(r):
+    """The music bed level an assemble_timeline result reports, for its summary."""
+    lv = r.get("music_level")
+    if not lv:
+        return ""
+    back = lv.get("read_back")
+    return (f"; music bed measures {lv['measured_lufs']:g} LUFS (true peak {lv['true_peak_before']:g} "
+            f"dBTP): {lv['gain_db']:+g} dB baked for {lv['target']:g} LUFS (peak "
+            f"{lv['true_peak_after']:g} dBTP)"
+            + (f"; read back {back['integrated_lufs']:g} LUFS, {back['true_peak_dbtp']:g} dBTP"
+               if back else ""))
+
+
 def assemble_timeline(args, ctx):
     _require_sha(args)
     manifest = _abs(args["manifest"], "manifest")
@@ -605,7 +618,7 @@ def assemble_timeline(args, ctx):
                    if p["music"] else ""))
         skipped = f"; not built: {'; '.join(p['not_built'])}" if p["not_built"] else ""
         skipped += (f"; {r['exclude_note']}" if r["exclude_note"] else "")
-        skipped += ledgercheck.summary(r["ledger"]) + _colour_line(r) + _squeeze_line(r) + _level_line(r)
+        skipped += ledgercheck.summary(r["ledger"]) + _colour_line(r) + _squeeze_line(r) + _level_line(r) + _music_line(r)
         if r["dry_run"]:
             r["summary"] = f"would build '{r['timeline']}' with {what}{skipped}" + _how(r)
             return cmd_assemble.compact(r)
@@ -1442,6 +1455,10 @@ def register(registry):
         "refused when it would put the true peak above -1.5 dBTP. With music and camera_sound the "
         "dry run also reports `mix`, the true peak of both summed as placed, and refuses above "
         "-1.5 dBTP. music_gain_db (-40 to 12, with music) is a gain baked into the bed; "
+        "music_lufs (-40 to -5, music alone, not with music_gain_db) measures the bed over the span "
+        "used and bakes the gain that lands it there (ebur128); the result's `music_level` shows "
+        "measured, gain and peak after, refused above -2 dBTP (never limited), and a real run "
+        "reads the baked file back; "
         "camera_sound_fade_s (with camera_sound, at most 5 s and half the last shot) bakes the "
         "last shot's camera sound, first stream, with that fade out and places the file on A1 "
         "in its place. The result's per-file lists "
