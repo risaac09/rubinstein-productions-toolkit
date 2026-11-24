@@ -1,0 +1,1 @@
+New delivery destination youtube_16x9_music: youtube_16x9 for a music-only montage, with no captions, the montage file name and the baked music fade checked by deliver_check, the landscape twin of social_9x16_music. Before it, a music-only 16:9 timeline could not be queued for YouTube, since every 16:9 destination wants a caption sidecar.

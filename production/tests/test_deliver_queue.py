@@ -241,6 +241,23 @@ class TestQueueDestination(Base):
         self.assertEqual(self.project.jobs, [])
 
 
+class TestYoutubeMusicDestination(Base):
+    """youtube_16x9_music: youtube_16x9 for a music-only montage, as social_9x16_music is social_9x16's."""
+
+    def test_it_validates_and_differs_from_youtube_16x9_only_in_captions_naming_and_tail(self):
+        d = deliver.destination(self.config, "youtube_16x9_music")
+        self.assertEqual(deliver.destination_problems(d), [])
+        self.assertEqual((d["captions"], d["naming"], d["tail_fade"]), ("none", "montage", True))
+        yt = deliver.destination(self.config, "youtube_16x9")
+        same = {k for k in d if k not in ("name", "naming", "captions", "key", "subfolder", "tail_fade")}
+        self.assertEqual({k: d[k] for k in same}, {k: yt[k] for k in same})
+
+    def test_the_repo_config_and_the_built_in_default_agree(self):
+        repo = rpconfig.load_config(rpconfig.CONFIG_PATH_DEFAULT, strict=True)
+        self.assertEqual(repo["destinations"]["youtube_16x9_music"],
+                         rpconfig.DEFAULT_CONFIG["destinations"]["youtube_16x9_music"])
+
+
 class TestMusicDestination(Base):
     """social_9x16_music: a music-only montage, no captions, no frame rate floor."""
 
