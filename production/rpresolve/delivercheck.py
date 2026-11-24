@@ -15,8 +15,14 @@ what it expected:
     fps_floor     WARN under the destination's min_fps, SKIP with none; never FAIL
     fps_constant  average and nominal frame rate agree (no VFR)
     pix_fmt       chroma family and bit depth, where the destination fixes them
-    video_bitrate expect.min_video_kbps; SKIP while no destination sets one
-                  (platform-specs.md records no bitrate floor)
+    video_bitrate expect.min_video_kbps (YouTube's lowest recommended upload
+                  rate): WARN under, never FAIL; SKIP with none, still showing
+                  the bit rate ffprobe read
+    video_bitrate_max, file_size, duration
+                  the platform ceilings a destination's expect block states
+                  (max_video_kbps, max_file_mb, max_duration_s): WARN over,
+                  SKIP with none; never FAIL, since each is the platform's
+                  limit for one upload route (platform-specs.md)
     safe_zone     caption and super boxes (boxes=, from captionlint or
                   overlay-check) inside rpresolve.safezone's margins; SKIP
                   with no boxes
@@ -765,6 +771,7 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
             rows.append(_row("pix_fmt", None, video.get("pix_fmt"), "not fixed"))
 
         rows.append(_bitrate(video, exp))
+        rows.extend(_limits(path, info, video, exp))
         rows.append(_safe_zone(w, h, boxes))
         rows.extend(shape_rows(video, size, manifest) if (size or manifest) else [])
 
@@ -902,20 +909,50 @@ def _tail_row(path, seconds, has_audio, loudness, offset=0.0):
                 f"window {ref:g} dB ({drop:.1f} dB lower)", expect)
 
 
-def _bitrate(video, exp):
-    """video_bitrate against expect.min_video_kbps. No destination in
-    resolve-config.json sets one: platform-specs.md records no bitrate floor,
-    so the row skips until a published one is added to a destination."""
-    floor = exp.get("min_video_kbps")
-    if floor is None:
-        return _row("video_bitrate", None, "not asserted", "no floor",
-                    "no platform floor is published in platform-specs.md")
+def _kbps(video):
     bps = video.get("bit_rate")
-    kbps = int(bps) / 1000 if str(bps or "").isdigit() else None
+    return int(bps) / 1000 if str(bps or "").isdigit() else None
+
+
+def _bitrate(video, exp):
+    """video_bitrate against expect.min_video_kbps, the platform's lowest
+    recommended upload rate (YouTube's table). Under it is a WARN: a VBR
+    render of a still picture may sit low on its own, but a render far under
+    it means the Deliver page's bit rate did not take."""
+    floor = exp.get("min_video_kbps")
+    kbps = _kbps(video)
+    if floor is None:
+        return _row("video_bitrate", None, "not asserted" if kbps is None else f"{kbps:g} kbps",
+                    "no floor", "this destination states no floor")
     if kbps is None:  # ffprobe omits it for some containers; not a reason to fail a file
         return _row("video_bitrate", None, "unreadable", f">= {float(floor):g} kbps",
                     "ffprobe gave no video bit_rate")
-    return _row("video_bitrate", kbps >= float(floor), f"{kbps:g} kbps", f">= {float(floor):g} kbps")
+    row = _row("video_bitrate", kbps >= float(floor), f"{kbps:g} kbps", f">= {float(floor):g} kbps")
+    return row if kbps >= float(floor) else dict(row, status=WARN)
+
+
+def _limits(path, info, video, exp):
+    """The ceilings a platform states for one upload route (Meta's Reels
+    publishing spec, TikTok's three minutes): WARN over, PASS under, SKIP
+    where the destination states none or the value cannot be read."""
+    found = {"video_bitrate_max": (_kbps(video), "max_video_kbps", "kbps"),
+             "file_size": (os.path.getsize(path) / 1e6, "max_file_mb", "MB"),
+             "duration": (duration(info, path), "max_duration_s", "s")}
+    r_rate = rate(video.get("r_frame_rate"))
+    frame = float(1 / r_rate) if r_rate else 0.0  # a cut of exactly the limit may end a frame over
+    rows = []
+    for name, (value, key, unit) in found.items():
+        limit = exp.get(key)
+        if limit is None or value is None:
+            rows.append(_row(name, None, "not read" if value is None else f"{value:.6g} {unit}",
+                             "no limit" if limit is None else f"<= {limit:g} {unit}"))
+        elif value <= float(limit) + (frame if key == "max_duration_s" else 0.0):
+            rows.append(_row(name, True, f"{value:.6g} {unit}", f"<= {limit:g} {unit}"))
+        else:
+            rows.append(dict(_row(name, False, f"{value:.6g} {unit}", f"<= {limit:g} {unit}",
+                                  "over the platform's stated limit for that upload route"),
+                             status=WARN))
+    return rows
 
 
 def _safe_zone(w, h, boxes):

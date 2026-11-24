@@ -126,7 +126,8 @@ class TestQueueDestination(Base):
         self.assertNotIn("StartRendering", [c[1] for c in rf.CALLS])
         self.assertEqual(len(self.project.jobs), 1)
         self.assertEqual(rs["DataBurnIn"], "None")
-        self.assertIn("VideoQuality", r["carried_over"])
+        self.assertNotIn("VideoQuality", r["carried_over"])
+        self.assertEqual(rs["VideoQuality"], 60000)
         self.assertIn("render mode Single clip (put back)", r["deliver_changed"])
 
     def test_the_job_is_queued_in_single_clip_mode_and_the_mode_put_back(self):

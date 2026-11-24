@@ -609,6 +609,7 @@ rules under `deliver`. `queue_render` takes a destination and nothing else.
 | `linkedin_16x9` | mp4, H.264 | 1920x1080 | AAC 48 kHz stereo | -16 LUFS | sidecar .srt |
 | `linkedin_9x16` | mp4, H.264 | 1080x1920 | AAC 48 kHz stereo | -16 LUFS | burnt in |
 | `social_9x16` | mp4, H.264 | 1080x1920 | AAC 48 kHz stereo | -14 LUFS | burnt in |
+| `youtube_9x16` | mp4, H.265 | 2160x3840 | AAC 48 kHz stereo | -14 LUFS | burnt in |
 | `social_1x1` | mp4, H.264 | 1080x1080 | AAC 48 kHz stereo | -14 LUFS | burnt in |
 | `linkedin_1x1` | mp4, H.264 | 1080x1080 | AAC 48 kHz stereo | -16 LUFS | burnt in |
 | `substack_16x9` | mp4, H.264 | 1920x1080 | AAC 48 kHz stereo | -16 LUFS | sidecar .srt |
@@ -894,7 +895,9 @@ are still open.
 - Which fields `GetRenderJobList` reports. The queue result compares the
   ones it does report and lists the rest as unverified.
 - Channel count cannot be set through the API (the render takes the
-  timeline's output bus). `VideoQuality` (bit rate), `EncodingProfile`,
+  timeline's output bus). `VideoQuality` (bit rate) and `EncodingProfile`
+  are set only by the destinations whose `resolve` block names them (the
+  YouTube and social ones, platform-specs.md); elsewhere they,
   `MultiPassEncode`, `PixelAspectRatio`, `ExportAlpha`, `AlphaMode`,
   `UniqueFilenameStyle`, `UseFullExtents`, `AddFrameHandles`,
   `ClipStartFrame` and `TimelineStartTimecode` are not set, so they carry

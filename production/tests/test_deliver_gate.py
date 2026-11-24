@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # test_delivercheck, run on its own
 
 from rpresolve import delivercheck as dc, safezone  # noqa: E402
-from test_delivercheck import failed, make, needs_ffmpeg, statuses, tiny  # noqa: E402
+from test_delivercheck import CFG, failed, make, needs_ffmpeg, statuses, tiny  # noqa: E402
 
 MASTER = "Client_example-slug_master.mov"
 VERT = "SW001_Guest_01_example-clip_9x16.mp4"
@@ -140,8 +140,66 @@ class TestGate(unittest.TestCase):
         dest["expect"]["min_video_kbps"] = 1
         self.assertEqual(statuses(dc.check(path, dest, size=(64, 36)))["video_bitrate"], dc.PASS)
         dest["expect"]["min_video_kbps"] = 10 ** 9
-        self.assertEqual(failed(dc.check(path, dest, size=(64, 36), loudness=False)),
-                         ["video_bitrate"])
+        r = dc.check(path, dest, size=(64, 36), loudness=False)
+        self.assertEqual((failed(r), statuses(r)["video_bitrate"]), ([], dc.WARN))
+
+    def test_platform_limits_warn_and_never_fail(self):
+        path = make(self.path(VERT), size="36x64", rate="30000/1001", lufs=-14.0)
+        dest = tiny("social_9x16")
+        s = statuses(dc.check(path, dest, loudness=False))
+        self.assertEqual((s["video_bitrate_max"], s["file_size"], s["duration"]),
+                         (dc.PASS, dc.PASS, dc.PASS))
+        dest["expect"]["max_duration_s"] = 2.5  # the clip's own length passes with a frame's slack
+        self.assertEqual(statuses(dc.check(path, dest, loudness=False))["duration"], dc.PASS)
+        dest["expect"].update(max_video_kbps=0.001, max_file_mb=1e-6, max_duration_s=1)
+        r = dc.check(path, dest, loudness=False)
+        s = statuses(r)
+        self.assertEqual((s["video_bitrate_max"], s["file_size"], s["duration"]),
+                         (dc.WARN, dc.WARN, dc.WARN), dc.format_report(r))
+        self.assertNotIn("duration", failed(r))
+        none = statuses(dc.check(path, tiny("linkedin_9x16"), loudness=False))
+        self.assertEqual((none["video_bitrate_max"], none["file_size"], none["duration"]),
+                         (dc.SKIP, dc.SKIP, dc.SKIP))
+        found = {x["check"]: x["found"] for x in r["checks"]}
+        self.assertTrue(found["video_bitrate"].endswith("kbps"), found["video_bitrate"])
+
+
+class TestPlatformValues(unittest.TestCase):
+    """The per-platform values in the config (sources in platform-specs.md)."""
+
+    def test_each_platform_gets_its_values(self):
+        d = {k: dc.deliver.destination(CFG, k) for k in dc.deliver.destination_keys(CFG)}
+        for k in ("youtube_16x9", "youtube_16x9_music", "youtube_9x16"):
+            self.assertEqual((d[k]["resolve"]["VideoQuality"], d[k]["audio"]["bitrate_kbps"],
+                              d[k]["expect"]["min_video_kbps"]), (60000, 384, 35000), k)
+        self.assertEqual((d["youtube_16x9_hd"]["resolve"]["VideoQuality"],
+                          d["youtube_16x9_hd"]["expect"]["min_video_kbps"]), (16000, 8000))
+        for k, x in d.items():
+            self.assertEqual(dc.deliver.destination_problems(x), [], k)
+        bad = dict(d["social_9x16"], expect={**d["social_9x16"]["expect"], "max_file_mb": "300"})
+        self.assertIn("expect.max_file_mb must be a positive number",
+                      dc.deliver.destination_problems(bad))
+        for k in ("social_9x16", "social_9x16_music", "social_4x5", "social_1x1"):
+            self.assertEqual(d[k]["resolve"], {"NetworkOptimization": True, "VideoQuality": 16000,
+                                               "EncodingProfile": "High"}, k)
+            self.assertLessEqual(d[k]["resolution"]["width"], 1920, k)  # Meta's column limit
+            self.assertEqual((d[k]["expect"]["max_video_kbps"], d[k]["expect"]["max_file_mb"],
+                              d[k]["expect"]["max_duration_s"]), (25000, 300, 180), k)
+            self.assertLess(d[k]["resolve"]["VideoQuality"], d[k]["expect"]["max_video_kbps"])
+        shorts = d["youtube_9x16"]
+        self.assertEqual((shorts["resolution"], shorts["codec"], shorts["captions"],
+                          shorts.get("min_fps"), shorts["expect"]["max_duration_s"]),
+                         ({"width": 2160, "height": 3840}, "H265", "burnin", None, 180))
+        for k in ("linkedin_16x9", "linkedin_9x16", "linkedin_1x1", "substack_16x9"):
+            self.assertNotIn("VideoQuality", d[k]["resolve"], k)  # not assessed here
+
+    def test_upscale_warns_and_a_native_timeline_does_not(self):
+        shorts = dc.deliver.destination(CFG, "youtube_9x16")
+        self.assertIn("scale the picture up", dc.deliver.upscale_warnings(shorts, (1080, 1920))[0])
+        self.assertEqual(dc.deliver.upscale_warnings(shorts, (2160, 3840)), [])
+        self.assertEqual(dc.deliver.upscale_warnings(shorts, None), [])
+        self.assertEqual(dc.deliver.upscale_warnings(
+            dc.deliver.destination(CFG, "social_9x16"), (2160, 3840)), [])
 
 
 if __name__ == "__main__":

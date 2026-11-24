@@ -40,13 +40,13 @@
         "sample_rate": 48000,
         "bit_depth": null,
         "channels": 2,
-        "bitrate_kbps": 320
+        "bitrate_kbps": 384
       },
       "loudness": { "integrated_lufs": -14.0 },
       "captions": "sidecar",
       "color": { "resolve": { "GammaTag": "Rec.709-A" }, "expect": { "color_transfer": "bt709" } },
-      "resolve": { "NetworkOptimization": true },
-      "expect": { "codec_name": "hevc", "profile": null, "pix_fmt_family": "420", "bit_depth": null }
+      "resolve": { "NetworkOptimization": true, "VideoQuality": 60000 },
+      "expect": { "codec_name": "hevc", "profile": null, "pix_fmt_family": "420", "bit_depth": null, "min_video_kbps": 35000 }
     },
     "youtube_16x9_hd": {
       "name": "YouTube 16:9 HD",
@@ -63,13 +63,13 @@
         "sample_rate": 48000,
         "bit_depth": null,
         "channels": 2,
-        "bitrate_kbps": 320
+        "bitrate_kbps": 384
       },
       "loudness": { "integrated_lufs": -14.0 },
       "captions": "sidecar",
       "color": { "resolve": { "GammaTag": "Rec.709-A" }, "expect": { "color_transfer": "bt709" } },
-      "resolve": { "NetworkOptimization": true },
-      "expect": { "codec_name": "hevc", "profile": null, "pix_fmt_family": "420", "bit_depth": null }
+      "resolve": { "NetworkOptimization": true, "VideoQuality": 16000 },
+      "expect": { "codec_name": "hevc", "profile": null, "pix_fmt_family": "420", "bit_depth": null, "min_video_kbps": 8000 }
     },
     "linkedin_16x9": {
       "name": "LinkedIn 16:9",
@@ -138,8 +138,31 @@
       "loudness": { "integrated_lufs": -14.0 },
       "captions": "burnin",
       "color": { "resolve": { "GammaTag": "Rec.709-A" }, "expect": { "color_transfer": "bt709" } },
-      "resolve": { "NetworkOptimization": true },
-      "expect": { "codec_name": "h264", "profile": null, "pix_fmt_family": "420", "bit_depth": 8 }
+      "resolve": { "NetworkOptimization": true, "VideoQuality": 16000, "EncodingProfile": "High" },
+      "expect": { "codec_name": "h264", "profile": null, "pix_fmt_family": "420", "bit_depth": 8, "max_video_kbps": 25000, "max_file_mb": 300, "max_duration_s": 180 }
+    },
+    "youtube_9x16": {
+      "name": "YouTube Shorts 9:16 UHD",
+      "naming": "clip",
+      "aspect": "9x16",
+      "target_dir": null,
+      "format": "mp4",
+      "codec": "H265",
+      "codec_fallbacks": ["HEVC", "H.265"],
+      "resolution": { "width": 2160, "height": 3840 },
+      "audio": {
+        "codec": "aac",
+        "resolve_codec": "aac",
+        "sample_rate": 48000,
+        "bit_depth": null,
+        "channels": 2,
+        "bitrate_kbps": 384
+      },
+      "loudness": { "integrated_lufs": -14.0 },
+      "captions": "burnin",
+      "color": { "resolve": { "GammaTag": "Rec.709-A" }, "expect": { "color_transfer": "bt709" } },
+      "resolve": { "NetworkOptimization": true, "VideoQuality": 60000 },
+      "expect": { "codec_name": "hevc", "profile": null, "pix_fmt_family": "420", "bit_depth": null, "min_video_kbps": 35000, "max_duration_s": 180 }
     },
     "social_9x16_music": {
       "name": "Social 9:16, music only (TikTok, Instagram)",
@@ -162,8 +185,8 @@
       "tail_fade": true,
       "captions": "none",
       "color": { "resolve": { "GammaTag": "Rec.709-A" }, "expect": { "color_transfer": "bt709" } },
-      "resolve": { "NetworkOptimization": true },
-      "expect": { "codec_name": "h264", "profile": null, "pix_fmt_family": "420", "bit_depth": 8 }
+      "resolve": { "NetworkOptimization": true, "VideoQuality": 16000, "EncodingProfile": "High" },
+      "expect": { "codec_name": "h264", "profile": null, "pix_fmt_family": "420", "bit_depth": 8, "max_video_kbps": 25000, "max_file_mb": 300, "max_duration_s": 180 }
     },
     "youtube_16x9_music": {
       "name": "YouTube 16:9 UHD, music only",
@@ -180,14 +203,14 @@
         "sample_rate": 48000,
         "bit_depth": null,
         "channels": 2,
-        "bitrate_kbps": 320
+        "bitrate_kbps": 384
       },
       "loudness": { "integrated_lufs": -14.0 },
       "tail_fade": true,
       "captions": "none",
       "color": { "resolve": { "GammaTag": "Rec.709-A" }, "expect": { "color_transfer": "bt709" } },
-      "resolve": { "NetworkOptimization": true },
-      "expect": { "codec_name": "hevc", "profile": null, "pix_fmt_family": "420", "bit_depth": null }
+      "resolve": { "NetworkOptimization": true, "VideoQuality": 60000 },
+      "expect": { "codec_name": "hevc", "profile": null, "pix_fmt_family": "420", "bit_depth": null, "min_video_kbps": 35000 }
     },
     "social_4x5": {
       "name": "Social 4:5 (TikTok, Instagram)",
@@ -210,8 +233,8 @@
       "loudness": { "integrated_lufs": -14.0 },
       "captions": "burnin",
       "color": { "resolve": { "GammaTag": "Rec.709-A" }, "expect": { "color_transfer": "bt709" } },
-      "resolve": { "NetworkOptimization": true },
-      "expect": { "codec_name": "h264", "profile": null, "pix_fmt_family": "420", "bit_depth": 8 }
+      "resolve": { "NetworkOptimization": true, "VideoQuality": 16000, "EncodingProfile": "High" },
+      "expect": { "codec_name": "h264", "profile": null, "pix_fmt_family": "420", "bit_depth": 8, "max_video_kbps": 25000, "max_file_mb": 300, "max_duration_s": 180 }
     },
     "social_1x1": {
       "name": "Social 1:1 (TikTok, Instagram)",
@@ -234,8 +257,8 @@
       "loudness": { "integrated_lufs": -14.0 },
       "captions": "burnin",
       "color": { "resolve": { "GammaTag": "Rec.709-A" }, "expect": { "color_transfer": "bt709" } },
-      "resolve": { "NetworkOptimization": true },
-      "expect": { "codec_name": "h264", "profile": null, "pix_fmt_family": "420", "bit_depth": 8 }
+      "resolve": { "NetworkOptimization": true, "VideoQuality": 16000, "EncodingProfile": "High" },
+      "expect": { "codec_name": "h264", "profile": null, "pix_fmt_family": "420", "bit_depth": 8, "max_video_kbps": 25000, "max_file_mb": 300, "max_duration_s": 180 }
     },
     "linkedin_1x1": {
       "name": "LinkedIn 1:1",
