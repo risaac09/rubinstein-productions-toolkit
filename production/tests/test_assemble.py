@@ -1470,7 +1470,7 @@ class TestSqueezeInTheHeight(Base):
         self.assertEqual([(x.get("ZoomX"), x.get("ZoomY")) for x in r["items"]],
                          [(0.6667, 1), (0.7667, 1.15), (None, None)])
         self.assertFalse([c for c in rf.CALLS if c[1] == "SetClipProperty" and c[2][0] == "PAR"])
-        self.assertIn("set Zoom X on 2 item(s)", self.summary(r))
+        self.assertIn("Zoom X set on 2 of 2 item(s)", self.summary(r))
 
     def test_a_zoom_that_does_not_land_is_a_problem(self):
         dry = self.go(width=1080, height=1920)
@@ -1480,8 +1480,21 @@ class TestSqueezeInTheHeight(Base):
             return True if key == "ZoomX" else real_set(item, key, value)
         with mock.patch.object(rf.Item, "SetProperty", deaf):
             r = self.go(width=1080, height=1920, dry_run=False, expect_sha=dry["plan_sha"])
-        self.assertTrue(any("ZoomX" in x for x in r["problems"]), r["problems"])
+        self.assertEqual([x for x in r["problems"] if "ZoomX" in x][0][:7], "item 1:")
         self.assertEqual(r["exit_status"], 1)
+        self.assertEqual([x.get("ZoomY") for x in r["items"]], [1, 1.15, None])  # the other axis is still written
+        self.assertIn("Zoom X set on 0 of 2 item(s)", self.summary(r))
+
+    def test_a_plain_scale_is_written_as_it_is_on_both_axes(self):
+        self.manifest["clips"][0]["spans"][2]["scale"] = 1.23456  # two.mov: no squeeze
+        r = self.go(dry_run=False, expect_sha=self.go()["plan_sha"])
+        item = next(t for t in self.project.timelines if t.name == "Shoot m v1 [auto]").GetItemListInTrack("video", 1)[2]
+        self.assertEqual((item.props["ZoomX"], item.props["ZoomY"], "ZoomGang" in item.props), (1.23456, 1.23456, False))
+        self.assertEqual(r["problems"], [])
+
+    def test_a_shape_a_hair_wider_than_the_picture_is_not_called_bars(self):
+        (row,) = self.go(width=1080, height=1080)["shape"]  # 1.00:1 over a 0.9987:1 picture
+        self.assertEqual((row.get("bars"), row["note"]), (None, ""))
 
     def test_the_plan_hash_follows_the_factor(self):
         before = self.go(width=1080, height=1920)["plan_sha"]

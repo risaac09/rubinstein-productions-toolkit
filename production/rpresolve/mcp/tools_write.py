@@ -564,10 +564,13 @@ def _squeeze_line(r):
     elif r["desqueeze"] and not r["dry_run"]:
         bits.append(f"Pixel Aspect Ratio set on {sum(1 for x in r['desqueeze'] if x.get('result') == 'set')} "
                     f"of {len(r['desqueeze'])} clip(s), read back")
-    tall = [s for s in r["plan"]["spans"] if s.get("zoom_x")]
-    if tall:
-        bits.append(f"{'would set' if r['dry_run'] else 'set'} Zoom X on {len(tall)} item(s) squeezed "
-                    "in the height (Zoom Y stays at the scale), read back")
+    tall = {s["index"] for s in r["plan"]["spans"] if s.get("zoom_x")}
+    if tall and r["dry_run"]:
+        bits.append(f"would set Zoom X on {len(tall)} item(s) squeezed in the height (Zoom Y stays at the scale)")
+    elif tall:
+        done = sum(1 for i in r["items"] if i["index"] in tall and "ZoomX" in i and "ZoomY" in i)
+        bits.append(f"Zoom X set on {done} of {len(tall)} item(s) squeezed in the height "
+                    "(Zoom Y at the scale), read back")
     bits += cmd_assemble.once([x["note"] for x in r["shape"] if x["note"]], [])
     return "; squeeze: " + "; ".join(bits) if bits else ""
 

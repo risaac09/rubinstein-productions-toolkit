@@ -709,7 +709,8 @@ def _item_plan(it, crop, n, text_size_override, text_cap):
     path = _item_path(it)
     if crop.get("path") and path and rpingest.norm_path(path) != rpingest.norm_path(crop["path"]):
         why.append("plays a different file than crops.json planned")
-    tall = rpsqueeze.height_refusal(path or crop.get("path") or "", "vertical_apply")
+    known = path or crop.get("path")
+    tall = known and rpsqueeze.height_refusal(known, "vertical_apply")
     if tall:
         why.append(tall)
     zx, zy = (_num(api._safe_call(it, "GetProperty", k)) for k in ("ZoomX", "ZoomY"))

@@ -596,10 +596,7 @@ def _build(out, project, media_pool, root, name, p, tl_fps, width, height, check
             if track > 1 and it.GetStart() != info["recordFrame"]:
                 problems.append(f"item {r['index']} sits at frame {it.GetStart() - tl.GetStartFrame()}, "
                                 f"planned {info['recordFrame'] - tl.GetStartFrame()}")
-            try:
-                row.update(_zoom(it, r["scale"], r.get("zoom_x")))
-            except api.WriteNotApplied as e:
-                problems.append(f"item {r['index']}: {e}")
+            row.update(_zoom(it, r["scale"], r.get("zoom_x"), problems, f"item {r['index']}"))
             out["items"].append(row)
         if p["sound"]:
             check()
@@ -628,19 +625,25 @@ def _build(out, project, media_pool, root, name, p, tl_fps, width, height, check
         problems.append(f"{type(e).__name__}: {e}")
 
 
-def _zoom(it, scale, zoom_x):
+def _zoom(it, scale, zoom_x, problems, who):
     """Set an item's zoom through the checked write and return what was read back: a span's
     static scale on both axes, times zoom_x across the width for a source squeezed in the
     height (Zoom X 0.6667 with Zoom Y 1 measured right against a source frame on a 1080x1920
     fill timeline, 2026-11-24). An unequal zoom needs the link between the axes off first.
+    Each axis is tried on its own and a write that does not land goes to problems under `who`.
     Nothing is written for a plain item."""
     if not scale and not zoom_x:
         return {}
-    got = {}
+    want = {"ZoomX": scale, "ZoomY": scale}
     if zoom_x:
         it.SetProperty("ZoomGang", False)  # proven by the unequal read-backs below
-    for k, v in (("ZoomX", round((scale or 1) * (zoom_x or 1), 4)), ("ZoomY", scale or 1)):
-        got[k] = api.set_property_checked(it, k, v)
+        want = {"ZoomX": round((scale or 1) * zoom_x, 4), "ZoomY": scale or 1}
+    got = {}
+    for k, v in want.items():
+        try:
+            got[k] = api.set_property_checked(it, k, v)
+        except api.WriteNotApplied as e:
+            problems.append(f"{who}: {e}")
     return got
 
 
@@ -684,10 +687,8 @@ def _plates(out, tl, media_pool, have, p, ends, tl_fps, check):
                 api._safe_call(info["mediaPoolItem"], "GetUniqueId"):
             problems.append(f"the plate under item {row['into']} is {it.GetName()}, not the "
                             "outgoing shot")
-        try:
-            _zoom(it, scale, p["spans"][row["into"] - 2].get("zoom_x"))
-        except api.WriteNotApplied as e:
-            problems.append(f"the plate under item {row['into']}: {e}")
+        _zoom(it, scale, p["spans"][row["into"] - 2].get("zoom_x"), problems,
+              f"the plate under item {row['into']}")
 
 
 PAR = "PAR"  # the clip property Clip Attributes' Pixel Aspect Ratio reads and writes
@@ -762,7 +763,7 @@ def shape_plan(p, width, height):
         shape = width / height
         row = {"source": base, "picture": f"{dims[0]}x{dims[1]} at {rpsqueeze.label(r['factor'])} = {pic:.2f}:1",
                "crop": None, "fits": None, "note": ""}
-        if r["factor"] < 1 and shape > pic * (1 + 1e-9):
+        if r["factor"] < 1 and shape > pic * 1.005:  # a gap under half a percent is rounding, not bars
             # Zoom X narrows the filled picture and Zoom Y stays 1, so a frame wider than the
             # real picture is not covered. Only the covered case was measured live.
             fill = max(width, height * dims[0] / dims[1])  # the stored picture's width after fill

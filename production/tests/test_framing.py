@@ -347,6 +347,10 @@ class TestSqueeze(unittest.TestCase):
         self.assertAlmostEqual(it["entry"]["scale"], 0.6669, places=4)  # 2646 / 3968, rounded up
         self.assertAlmostEqual(flat["entry"]["scale"], 1.0, places=4)
 
+    def test_a_squeeze_in_the_height_is_refused_by_name(self):
+        with self.assertRaisesRegex(reframe.ReframeError, "below 1, a squeeze in the height"):
+            master_item((2100.0, 1700.0, 2364.0, 2000.0), squeeze=0.6667)
+
     def test_the_squeeze_comes_from_the_file_tag_or_is_named_as_assumed(self):
         self.assertEqual(reframe.squeeze_tag({"streams": [{"tags": {"anamorphic": "1.5x"}}]}), 1.5)
         self.assertEqual(reframe.squeeze_tag({"format": {"tags": {"com.blackmagic.anamorphic":
