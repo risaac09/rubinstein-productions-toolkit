@@ -391,7 +391,7 @@ def destination_problems(dest):
     color = dest.get("color") or {}
     if not isinstance(color.get("resolve"), dict) or not isinstance(color.get("expect"), dict):
         p.append("color needs a resolve block (tag strings) and an expect block (ffprobe values)")
-    for k in ("min_video_kbps", "max_video_kbps", "max_file_mb", "max_duration_s"):
+    for k in ("min_video_kbps", "min_video_kbps_hfr", "max_video_kbps", "max_file_mb", "max_duration_s"):
         v = (dest.get("expect") or {}).get(k)
         if v is not None and not (_num(v) and v > 0):
             p.append(f"expect.{k} must be a positive number")

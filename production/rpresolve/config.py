@@ -60,8 +60,10 @@ def _web(name, aspect, width, height, codec, lufs, captions, video_kbps=None, au
 # (H.265 needs less than the H.264 figures). Its audio advice is AAC stereo 384 kbps.
 # VideoQuality as an int is a bit rate (scripting README); kbps, as the Deliver
 # page's "Restrict to" field, is unverified until a live queue reads it back.
-# The floor (a WARN in deliver_check) is the table's lowest figure for the size.
-YT_UHD = {"video_kbps": 60000, "audio_kbps": 384, "limits": {"min_video_kbps": 35000}}
+# The floor (a WARN in deliver_check) is the table's lowest figure for the size;
+# min_video_kbps_hfr is the 48-60 fps band's lowest, used when ffprobe reads over 30 fps.
+YT_UHD = {"video_kbps": 60000, "audio_kbps": 384,
+          "limits": {"min_video_kbps": 35000, "min_video_kbps_hfr": 53000}}
 YT_HD = {"video_kbps": 16000, "audio_kbps": 384, "limits": {"min_video_kbps": 8000}}
 # Meta's Reels publishing spec: VBR at most 25 Mbps, 300 MB, 15 min, at most 1920
 # columns; TikTok lets every creator post 3 minutes. H.264 High is Instagram's ask.
@@ -124,6 +126,7 @@ DEFAULT_CONFIG = {
         # is what earns YouTube's VP9 encode; TikTok and Instagram stay at 1080x1920.
         "youtube_9x16": _web("YouTube Shorts 9:16 UHD", "9x16", 2160, 3840, "H265", -14.0,
                              "burnin", **{**YT_UHD, "limits": {"min_video_kbps": 35000,
+                                                                "min_video_kbps_hfr": 53000,
                                                                 "max_duration_s": 180}}),
         # A music-only montage: no speech, so no captions, and 24 fps is allowed (no min_fps).
         # It has no show, guest or clip index, so it takes the montage name, not the clip name.
