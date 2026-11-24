@@ -35,6 +35,11 @@ Checks, one row each (pass, review, fail, n/a):
 
 Exit 0 all pass, 2 any review, 1 any fail. --manifest-out is written on 0 and 2,
 never on 1, outside any git tree.
+
+A source is read whole to be hashed when --sources gives its sha256 (the sources
+check compares it) and when --manifest-out has to record one that --sources left
+out. One 100 GB file on a network share took about nine minutes (2026-11-24), and
+no option skips it, so allow for the wait on long takes.
 """
 
 import csv
