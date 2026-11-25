@@ -159,6 +159,27 @@ class ReviewLogTests(unittest.TestCase):
         lines = Path(self.log).read_text().splitlines()
         self.assertEqual((lines[0], json.loads(lines[1])["choice"]), ('{"torn": ', "none"))
 
+    def test_shown_logs_shown_ts_and_minutes_sums_it(self):
+        self.assertEqual(self.run_cmd(*self.base("--choice", "4", "--shown", "2026-11-24T14:59:00Z", step="grade"))[0], 0)
+        self.assertEqual(self.run_cmd(*self.base("--choice", "3", step="grade"))[0], 0)  # no --shown: untimed
+        lines = [json.loads(x) for x in Path(self.log).read_text().splitlines()]
+        self.assertEqual(lines[0]["shown_ts"], "2026-11-24T14:59:00Z")
+        self.assertNotIn("shown_ts", lines[1])
+        # pin the answer times so the sum is exact
+        lines[0]["ts"] = "2026-11-24T15:02:30Z"
+        Path(self.log).write_text("".join(json.dumps(x) + "\n" for x in lines))
+        got = reviewlog.minutes(self.log)
+        self.assertEqual(got, {"cards": 1, "minutes": 3.5, "untimed": 1, "longest": {"step": "grade", "minutes": 3.5}})
+        out = subprocess.run([sys.executable, "-m", "rpresolve.reviewlog", "minutes", self.log],
+                             capture_output=True, text=True, cwd=str(Path(__file__).resolve().parents[1]))
+        self.assertEqual(json.loads(out.stdout)["minutes"], 3.5)
+
+    def test_shown_refused_when_not_a_time_or_in_the_future(self):
+        for bad in ("yesterday", "2026-11-24T14:59:00", "2999-01-01T00:00:00Z"):
+            code, _, err = self.run_cmd(*self.base("--choice", "4", "--shown", bad, step="grade"))
+            self.assertEqual(code, 2, bad)
+        self.assertFalse(os.path.exists(self.log))
+
     def test_rating_without_key_is_kept(self):
         self.assertEqual(self.run_cmd(*self.base("--choice", "4", step="grade"))[0], 0)
         events, bad = tastedistill.read_events(self.log)
