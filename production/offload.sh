@@ -33,14 +33,15 @@
 # passes; no full offsite copy is required. <copy>.offsite.txt records "tier lite" or "tier full".
 #
 # The lite copy names its card, and is made by this tool: `offload.sh lite <new-lite-dir> <copy-dir>`
-# transcodes each video from the verified copy (ffmpeg) into a folder that does not exist yet (or is
+# transcodes each video from the verified copy (ffmpeg; a BRAW's proxy is copied as is) into a folder that does not exist yet (or is
 # empty), and writes <lite-dir>/offload-lite-manifest.txt in the same step: the card id, and per lite
 # file its hash and the hash of the original, checked against SHA256SUMS before and after the
 # transcode. No command writes a manifest for files already in a folder, and `lite` refuses a
 # non-empty folder, so another card's lite folder is never relabelled. safe --lite refuses a lite dir
 # with no manifest, a manifest for another card, a lite file that no longer matches it, an unreadable
 # lite file, or lite files with the same bytes for different originals. Limit: a manifest typed by hand in the same format
-# would pass; the tool has no way to tell. A BRAW video is transcoded from its Proxy .mp4 (recorded in the manifest); with none, `lite` refuses.
+# would pass; the tool has no way to tell. A BRAW video's lite file is its camera Proxy .mp4, copied byte for byte (its hash is the
+# proxy's line in SHA256SUMS, recorded in the manifest); with no proxy, `lite` refuses.
 #
 # Exit: 0 ok, 1 copy or check failed, 2 refused (usage, gate, destination).
 # Check a finished copy later: cd <CAM>-<id6> && shasum -a 256 -c ../<CAM>-<id6>.SHA256SUMS
@@ -370,7 +371,7 @@ cmd_lite() {
   while IFS=$'\t' read -r l s; do
     [ -n "$l" ] || continue
     r="$s"
-    # ffmpeg cannot read BRAW: the camera's Proxy .mp4 (also in SHA256SUMS) is what gets transcoded, and the manifest says so.
+    # ffmpeg cannot read BRAW: the camera's Proxy .mp4 (also in SHA256SUMS) is the lite file, and the manifest says so.
     case "$s" in *.[bB][rR][aA][wW])
       r=$(cut -c67- "$dir.SHA256SUMS" | awk -v d="$(dirname "$s")" -v b="$(basename "$s")" '
         BEGIN { st = b; sub(/\.[^.]*$/, "", st); want = (d == "." ? "" : d "/") "Proxy/" st }
@@ -382,14 +383,21 @@ cmd_lite() {
     h1=$(shasum -a 256 < "$dir/$r" 2>/dev/null | cut -d' ' -f1)
     [ "$h1" = "$sh" ] || fail "$r no longer matches its recorded hash; no lite copy made"
     mkdir -p "$work/$(dirname "$l")" || fail "cannot create folder for $l"
-    "$FFMPEG_BIN" -nostdin -v error -y -i "$dir/$r" -map 0:v:0 -map '0:a?' -c:v libx264 -preset veryfast -crf 28 \
-      -vf scale=-2:720 -c:a aac -b:a 96k -movflags +faststart "$work/$l" < /dev/null \
-      || fail "ffmpeg failed on $s; no lite copy made"
+    if [ "$r" != "$s" ]; then
+      # A BRAW's camera proxy is already a small H.264: its lite file is that proxy byte for byte,
+      # so the lite hash is one SHA256SUMS recorded at offload (checked below).
+      cp "$dir/$r" "$work/$l" || fail "cannot copy the proxy $r for $s; no lite copy made"
+    else
+      "$FFMPEG_BIN" -nostdin -v error -y -i "$dir/$r" -map 0:v:0 -map '0:a?' -c:v libx264 -preset veryfast -crf 28 \
+        -vf scale=-2:720 -c:a aac -b:a 96k -movflags +faststart "$work/$l" < /dev/null \
+        || fail "ffmpeg failed on $s; no lite copy made"
+    fi
     h2=$(shasum -a 256 < "$dir/$r" 2>/dev/null | cut -d' ' -f1)
     [ "$h2" = "$sh" ] || fail "$r changed while it was being transcoded; no lite copy made"
     [ -s "$work/$l" ] || fail "ffmpeg wrote no lite file for $s; no lite copy made"
     lh=$(shasum -a 256 < "$work/$l" | cut -d' ' -f1)
     is_sha "$lh" || fail "cannot hash lite file $l; no lite copy made"
+    [ "$r" = "$s" ] || [ "$lh" = "$sh" ] || fail "the lite copy of $r does not match its recorded hash; no lite copy made"
     printf 'file\t%s\t%s\t%s\t%s\t%s\t%s\n' "$l" "$lh" "$s" "$(awk -v p="$s" 'substr($0, 67) == p { print substr($0, 1, 64); exit }' "$dir.SHA256SUMS")" "$r" "$sh" >> "$work/$LITE_MANIFEST"; n=$((n + 1))
   done <<NEEDMAP
 $map

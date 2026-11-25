@@ -602,6 +602,9 @@ out=$(FFMPEG_BIN=false "$O" lite "$T/lcfail" "$dB" 2>&1); rc=$?
 check "a failed ffmpeg leaves no lite folder" '[ "$rc" -eq 1 ] && [ ! -e "$T/lcfail" ] && ! ls "$T" | grep -q "lcfail.partial"'
 # The manifest records the bytes ffmpeg read (the Proxy .mp4 for a BRAW), and the lite file is made from them.
 check "the manifest ties each lite file to the original it read" 'grep -q "DCIM/B/R001.mp4	[0-9a-f]\{64\}	DCIM/B/R001.braw	[0-9a-f]\{64\}	DCIM/B/Proxy/R001.mp4	[0-9a-f]\{64\}" "$T/lcB/offload-lite-manifest.txt"'
+# A BRAW's lite file is its camera proxy byte for byte, so its lite hash is the proxy's own recorded hash.
+check "a BRAW's lite file is its proxy, byte for byte" 'cmp -s "$T/lcB/DCIM/B/R001.mp4" "$dB/DCIM/B/Proxy/R001.mp4" &&
+  awk -F"\t" "\$1 == \"file\" && \$4 == \"DCIM/B/R001.braw\" { exit (\$3 == \$7 ? 0 : 1) }" "$T/lcB/offload-lite-manifest.txt"'
 # Finding 5: two different clips whose lite files have the same bytes are refused.
 cat > "$T/bin/ffmpeg-same" <<'EOF'
 #!/bin/sh
