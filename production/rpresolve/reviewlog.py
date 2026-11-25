@@ -17,7 +17,7 @@ import os
 import re
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 
 from rpresolve.tastedistill import NON_LABEL, RATINGS  # the reader's own sets
 
