@@ -52,6 +52,18 @@ class TestCameraSound(Base):
         self.assertEqual(self.ui(), ("cut", self.here))  # the current timeline was put back
         self.assertEqual(self.journal(), ["started", "finished"])
 
+    def test_the_sound_runs_the_whole_picture_rounded_up_and_stays_in_the_clip(self):
+        # 50 timeline frames at 25 fps are 119.88 frames of a 59.94 clip: the picture's
+        # source end reads 119 (rounded down), the sound asks for 120
+        ntsc = rf.Clip("N.MP4", "clip-n", {"File Path": "/w/N.MP4", "FPS": "59.94", "Frames": "500"})
+        short = rf.Clip("S.MP4", "clip-s", {"File Path": "/w/S.MP4", "FPS": "59.94", "Frames": "119"})
+        self.auto.tracks["video"][0][:] = [
+            rf.Item("N.MP4", 86400, 86450, ntsc, source=(0, 119)),
+            rf.Item("S.MP4", 86450, 86500, short, source=(0, 119))]
+        run_twice("camera_sound", {"timeline": TL}, self.resolve)
+        sent = next(c[2][0] for c in rf.CALLS if c[1] == "AppendToTimeline")
+        self.assertEqual([(i["startFrame"], i["endFrame"]) for i in sent], [(0, 120), (0, 119)])
+
     def test_a_spilled_stream_is_reported_and_nothing_is_deleted(self):
         self.other.audio_streams = 2
         dry, real = run_twice("camera_sound", {"timeline": TL}, self.resolve)
