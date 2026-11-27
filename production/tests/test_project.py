@@ -55,13 +55,17 @@ class Chain(unittest.TestCase):
         with open(self.card + ".card.json", encoding="utf-8") as f:
             return json.load(f)
 
+    def state(self):
+        with open(os.path.join(self.cfg["work_root"], "demo", "project.json"), encoding="utf-8") as f:
+            return json.load(f)
+
     def fake(self, argv, **kw):
         self.calls.append(argv)
         if "rpresolve.cmd_card" in argv:
             return project.run_cmd(argv, **kw)
         if "rpresolve.cmd_detect" in argv:
-            return 2, json.dumps([{"path": "/x/A001.mov", "profile": "ok"},
-                                  {"path": "/x/A002.mov", "profile": "review"}]), ""
+            return 2, json.dumps([{"path": os.path.join(self.card, "DCIM", "A001.mov"), "profile": "ok"},
+                                  {"path": os.path.join(self.card, "DCIM", "A002.mov"), "profile": "review"}]), ""
         if "rpresolve.cmd_sheets" in argv:
             return 0, "6 cell(s) from 2 clip(s) on 1 sheet(s)", ""
         return 0, "", ""
@@ -127,6 +131,57 @@ class Chain(unittest.TestCase):
         project.answer(self.cfg, "demo", True, 1.5, ("A002.mov",), False, say=quiet, replace=True)
         with self.assertRaisesRegex(project.ProjectError, "already answered for 2 clip"):  # each has its own
             project.answer(self.cfg, "demo", False, 2.0, (), False, say=quiet)
+
+    def test_a_profile_answer_clears_the_detect_review_row(self):
+        quiet = lambda m: None  # noqa: E731
+        self.go(apply=True)
+        self.assertEqual(project.answer(self.cfg, "demo", True, 1.0, (), False, say=quiet), 0)
+        self.assertEqual(project.answer(self.cfg, "demo", False, profile="D-Log M", say=quiet), 0)  # dry run
+        self.assertNotIn("profile", self.record()["answers"])
+        self.go(apply=True)
+        self.assertIn("profile A002.mov", self.state()["open"])
+        self.assertEqual(project.answer(self.cfg, "demo", True, profile="D-Log M", say=quiet), 0)
+        self.assertEqual(list(self.record()["answers"]["profile"]["clips"].values()), ["D-Log M"])
+        self.assertIsNone(self.record()["answers"]["profile"]["default"])  # A001 was pinned by detect: no default
+        self.go(apply=True)
+        self.assertEqual(self.state()["open"], [])
+
+    def test_a_profile_answer_never_covers_a_pinned_clip_and_a_second_needs_replace(self):
+        quiet = lambda m: None  # noqa: E731
+        self.go(apply=True)
+        with self.assertRaisesRegex(project.ProjectError, "from its headers"):
+            project.answer(self.cfg, "demo", True, profile="Normal", clips=("A001.mov",), say=quiet)
+        with self.assertRaisesRegex(project.ProjectError, "no such clip"):
+            project.answer(self.cfg, "demo", True, profile="Normal", clips=("NOPE.mov",), say=quiet)
+        with self.assertRaisesRegex(project.ProjectError, "is not one of"):
+            project.answer(self.cfg, "demo", True, profile="Log", say=quiet)
+        self.assertEqual(project.answer(self.cfg, "demo", True, profile="Normal", clips=("A002.mov",), say=quiet), 0)
+        for clips in ((), ("A002.mov",)):
+            with self.assertRaisesRegex(project.ProjectError, r"profile is already answered for 1 clip.*--replace"):
+                project.answer(self.cfg, "demo", True, profile="D-Log M", clips=clips, say=quiet)
+        self.assertEqual(list(self.record()["answers"]["profile"]["clips"].values()), ["Normal"])
+        self.assertEqual(project.answer(self.cfg, "demo", True, profile="D-Log M", say=quiet, replace=True), 0)
+        self.assertEqual(list(self.record()["answers"]["profile"]["clips"].values()), ["D-Log M"])
+
+    def test_a_corrupt_clip_stays_open_and_takes_no_profile(self):
+        quiet = lambda m: None  # noqa: E731
+        real = self.fake
+
+        def corrupt(argv, **kw):
+            if "rpresolve.cmd_detect" in argv:
+                self.calls.append(argv)
+                return 2, json.dumps([{"path": os.path.join(self.card, "DCIM", "A001.mov"), "profile": "review"},
+                                      {"path": os.path.join(self.card, "DCIM", "A002.mov"), "profile": "corrupt"}]), ""
+            return real(argv, **kw)
+        mock.patch.object(project, "RUN", corrupt).start()
+        self.go(apply=True)
+        project.answer(self.cfg, "demo", True, 1.0, (), False, say=quiet)
+        with self.assertRaisesRegex(project.ProjectError, "corrupt"):
+            project.answer(self.cfg, "demo", True, profile="HLG", clips=("A002.mov",), say=quiet)
+        self.assertEqual(project.answer(self.cfg, "demo", True, profile="HLG", say=quiet), 0)
+        self.assertEqual(len(self.record()["answers"]["profile"]["clips"]), 1)  # A001 only
+        self.go(apply=True)
+        self.assertEqual(self.state()["open"], ["corrupt A002.mov"])
 
     def test_without_an_indexer_or_sheets_root_the_steps_are_skipped(self):
         self.cfg.update(indexer=None, sheets_root=None)

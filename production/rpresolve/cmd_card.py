@@ -10,7 +10,9 @@ card: read, check and keep the record of a copied camera card (production/card-r
                                        --axis height for a lens turned 90 degrees: F is then the
                                        lens's factor and 1 / F is recorded (1.5 becomes 0.6667);
                                        --upgrade turns a schema 1 record into schema 2 with no answer;
-                                       --refresh-shoot recomputes the shoot from the clips' capture times
+                                       --refresh-shoot recomputes the shoot from the clips' capture times;
+                                       --profile P records the colour mode (Normal, D-Log M, HLG) a person
+                                       gave where detect cannot read it, for the --clip clips or as default
     card mv PATH DEST_PARENT           move a card folder and its sidecars on the same volume, verify
                                        by hash, and append the move to the record's history
 
@@ -44,6 +46,7 @@ def add_arguments(p):
     p.add_argument("--axis", choices=("width", "height"), default="width",
                    help="set: where the squeeze is; height records 1 / FACTOR (a lens turned 90 degrees)")
     p.add_argument("--clip", action="append", metavar="ID", help="set: only this clip (clip id or file name; repeatable)")
+    p.add_argument("--profile", choices=rpcard.PROFILES, help="set: the colour mode a person gave (detect review clips)")
     p.add_argument("--project", help="set: the project slug")
     p.add_argument("--upgrade", action="store_true", help="set: upgrade a schema 1 record to schema 2, answering nothing")
     p.add_argument("--refresh-shoot", action="store_true",
@@ -169,8 +172,9 @@ def init(args):
 def set_(args):
     if len(args.paths) != 1:
         return _fail("set takes one path")
-    if args.squeeze is None and not args.project and not args.refresh_shoot and not args.upgrade:
-        return _fail("set wants --squeeze FACTOR, --project SLUG, --refresh-shoot or --upgrade")
+    if args.squeeze is None and args.profile is None and not args.project and not args.refresh_shoot \
+            and not args.upgrade:
+        return _fail("set wants --squeeze FACTOR, --profile P, --project SLUG, --refresh-shoot or --upgrade")
     card = rpcard.load(args.paths[0])
     if args.upgrade and card["version"] == 2:
         return _fail(f"{card['name']} is already schema 2")
@@ -181,11 +185,16 @@ def set_(args):
         return _fail(str(e))
     rec = rpcard.plan_set(card, default=None if args.clip else f,
                           clips={c: f for c in args.clip or []} if f is not None else None, project=args.project,
-                          refresh_shoot_=args.refresh_shoot, info=info)
+                          refresh_shoot_=args.refresh_shoot, info=info,
+                          profile=None if args.clip else args.profile,
+                          profile_clips={c: args.profile for c in args.clip or []} if args.profile else None)
     lines = []
     if f is not None:
         lines.append(f"squeeze {rpsqueeze.said_line(f)} for {len(args.clip)} clip(s)" if args.clip
                      else f"squeeze default {rpsqueeze.said_line(f)}")
+    if args.profile:
+        lines.append(f"profile {args.profile} for {len(args.clip)} clip(s)" if args.clip
+                     else f"profile default {args.profile}")
     if args.project:
         lines.append(f"project {args.project}")
     if args.refresh_shoot:
