@@ -737,7 +737,7 @@ class TestMCP(Base):
 
     def test_the_tool_list(self):
         names = [t.name for t in REG.list()]
-        self.assertEqual(len(names), 51)  # card_show, card_check, card_set and sheets, plus link_proxies, 28, plus the seven offline tools of VP-18, plus ograf_template_check, import_timeline, apply_effect, edit_methods, vertical_apply, assemble_timeline, set_current_timeline, notes, shotlist and watch
+        self.assertEqual(len(names), 52)  # card_show, card_check, card_set and sheets, plus link_proxies, camera_sound, 28, plus the seven offline tools of VP-18, plus ograf_template_check, import_timeline, apply_effect, edit_methods, vertical_apply, assemble_timeline, set_current_timeline, notes, shotlist and watch
         for name in ("deliver_check", "deliver_captions", "deliver_fix_loudness", "create_captions", "reframe_plan"):
             self.assertIn(name, names)
         for name in ("deliver_captions", "create_captions"):

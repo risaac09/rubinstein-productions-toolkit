@@ -501,6 +501,32 @@ def stabilize(args, ctx):
         return run() if args["dry_run"] else _journalled("stabilize", args, run)
 
 
+def camera_sound(args, ctx):
+    _require_sha(args)
+
+    def run():
+        r = workflows.camera_sound(ctx.session.get(), args["project"], args["timeline"],
+                                   track=args["track"], dry_run=args["dry_run"],
+                                   project_id=args.get("project_id"),
+                                   check_cancel=ctx.check_cancel, expect_sha=args.get("plan_sha"))
+        tl, n = r["timeline"]["name"], len(r["targets"])
+        skip = f"; {len(r['skipped'])} item(s) skipped (no media pool clip)" if r["skipped"] else ""
+        if r["dry_run"]:
+            r["summary"] = (f"would place the camera sound of {n} item(s) on V"
+                            f"{r['timeline']['track']} of '{tl}' onto A1, each under its "
+                            f"picture{skip}" + _how(r))
+        else:
+            r["applied"] = len(r["placed"])
+            r["summary"] = (f"placed the camera sound of {len(r['placed'])} of {n} item(s) on A1 "
+                            f"of '{tl}', read back against each picture{skip}"
+                            + (f"; {len(r['problems'])} problem(s): {r['problems'][0]}"
+                               if r["problems"] else "; the picture did not change") + _ui(r))
+        return r
+
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        return run() if args["dry_run"] else _journalled("camera_sound", args, run)
+
+
 def _skipped_note(r):
     """'; N item(s) skipped' when the track held items that are not clips (apply_effect, vertical_apply)."""
     return f"; {len(r['skipped'])} item(s) skipped (no media pool clip; see skipped)" if r["skipped"] else ""
@@ -1636,6 +1662,27 @@ def register(registry):
             **DRY_RUN},
          "required": ["project", "timeline"], "additionalProperties": False},
         stabilize, title="Stabilize items", annotations=DESTRUCTIVE))
+    registry.add(Tool(
+        "camera_sound",
+        "Place each clip's own camera sound on A1 of an ' [auto]' timeline (any other is "
+        "refused), under its picture on one video track: the same media pool clip, source "
+        "frames and record frame as the picture item, so a picture a person has rotated, "
+        "cropped or trimmed keeps its sound in step. Refused unless A1 exists and is empty. "
+        "Nothing that existed changes: the video items are read before and after, and every "
+        "placed item is read back for start and length against its picture. An item with no "
+        "media pool clip (a dissolve, title, generator) is skipped and listed. Audio streams a "
+        "source spills onto new tracks are reported as a problem, never deleted. The current "
+        "timeline, page and playhead are put back. Dry run first; the real run needs its "
+        "plan_sha.",
+        {"type": "object", "properties": {
+            **PROJECT,
+            "timeline": {"type": "string",
+                         "description": "An ' [auto]' timeline's name or unique id."},
+            "track": {"type": "integer", "minimum": 1, "default": 1,
+                      "description": "The video track whose clips get their sound (default V1)."},
+            **DRY_RUN},
+         "required": ["project", "timeline"], "additionalProperties": False},
+        camera_sound, title="Place camera sound under the picture", annotations=WRITE))
     registry.add(Tool(
         "queue_render",
         "Queue one render job for an ' [auto]' timeline for a delivery destination (with name and "

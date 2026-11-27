@@ -1705,6 +1705,108 @@ def stabilize(resolve, project_name, timeline, track=1, items=None, max_items=No
     return out
 
 
+def camera_sound(resolve, project_name, timeline, track=1, dry_run=False, project_id=None,
+                 check_cancel=None, expect_sha=None):
+    """Each clip's own camera sound on A1 of an ' [auto]' timeline, under its picture on
+    video `track`: the same media pool clip, source frames and record frame as the picture
+    item, so a picture a person rotated, cropped or trimmed keeps its sound in step. An item
+    with no media pool clip (a dissolve, title, generator) is skipped and listed. Refused
+    unless A1 exists and is empty. Nothing that existed changes: the video items are read
+    before and after, and every placed item is read back for start and length against its
+    picture. Audio streams a source spills onto new tracks (T36) are reported as a problem,
+    never deleted. Returns {project, timeline, targets, skipped, placed,
+    problems, plan_sha, dry_run, ui_restore_problems, exit_status}."""
+    pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
+    _, tl = api.find_timeline(project, timeline)
+    tl_name, tl_id = tl.GetName(), tl.GetUniqueId()
+    if not tl_name.endswith(AUTO):
+        raise Refused(f"'{tl_name}' is not an [auto] timeline. Camera sound goes only onto "
+                      "timelines these tools made; duplicate it first (duplicate_timeline_auto).")
+    if project.IsRenderingInProgress():
+        raise Refused("a render is running; place the sound after it finishes.")
+    tracks = int(tl.GetTrackCount("video") or 0)
+    if not 1 <= track <= tracks:
+        raise Refused(f"'{tl_name}' has {tracks} video track(s).")
+    if int(tl.GetTrackCount("audio") or 0) < 1:
+        raise Refused(f"'{tl_name}' has no audio track; add A1 by hand first.")
+    held = tl.GetItemListInTrack("audio", 1) or []
+    if held:
+        raise Refused(f"A1 of '{tl_name}' already holds {len(held)} item(s); camera sound goes "
+                      "only onto an empty A1.")
+    items = tl.GetItemListInTrack("video", track) or []
+    targets, skipped, clips = [], [], {}
+    for n, it in enumerate(items, 1):
+        clip = api._safe_call(it, "GetMediaPoolItem")
+        a, b = api._safe_call(it, "GetSourceStartFrame"), api._safe_call(it, "GetSourceEndFrame")
+        frames_ok = all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in (a, b))
+        if clip is None or not frames_ok or b <= a:
+            skipped.append({"position": n, "name": it.GetName(),
+                            "reason": "no media pool clip or no source frames"})
+            continue
+        t = {"index": n, "name": it.GetName(), "item_id": api._safe_call(it, "GetUniqueId"),
+             "start": it.GetStart(), "frames": it.GetDuration(),
+             "source_start": int(a), "source_end": int(b)}
+        clips[n] = clip
+        targets.append(t)
+    if not targets:
+        raise Refused(f"no clip on V{track} of '{tl_name}' to place sound under.")
+    sha = plan_sha("camera_sound", pin.unique_id, tl_id, track,
+                   [(t["index"], t["item_id"], t["start"], t["frames"], t["source_start"],
+                     t["source_end"]) for t in targets])
+    out = {"project": {"name": pin.name, "id": pin.unique_id},
+           "timeline": {"name": tl_name, "unique_id": tl_id, "track": track},
+           "targets": targets, "skipped": skipped, "placed": [], "problems": [],
+           "plan_sha": sha, "dry_run": dry_run, "ui_restore_problems": [], "exit_status": 0}
+    if dry_run:
+        return out
+    if expect_sha and expect_sha != sha:
+        raise Refused("the plan changed since the dry run (the items moved, or A1 changed); "
+                      "run the dry run again and review it")
+    problems = out["problems"]
+    picture = [(it.GetStart(), it.GetDuration()) for it in items]
+    top = int(tl.GetTrackCount("audio") or 0)
+    snap = api.UISnapshot(resolve, project)
+    with snap:
+        if check_cancel:
+            check_cancel()
+        project = pin.check(pm)
+        if project.IsRenderingInProgress():
+            raise Refused("a render started; no sound was placed.")
+        # AppendToTimeline writes to the current timeline; the snapshot puts the old one back
+        if not project.SetCurrentTimeline(tl) or api._safe_call(
+                api._safe_call(project, "GetCurrentTimeline"), "GetUniqueId") != tl_id:
+            raise api.WriteNotApplied(f"could not make '{tl_name}' current to place sound on it")
+        project.GetMediaPool().AppendToTimeline(
+            [{"mediaPoolItem": clips[t["index"]], "startFrame": t["source_start"],
+              "endFrame": t["source_end"], "mediaType": 2, "trackIndex": 1,
+              "recordFrame": t["start"]} for t in targets])
+    now = int(tl.GetTrackCount("audio") or 0)
+    if now > top:  # T36: deleting is not this tool's to do (the write-path guard)
+        problems.append(f"Resolve put a source's extra audio streams on new track(s) A{top + 1} "
+                        f"to A{now}; delete those tracks by hand if they are not wanted")
+    out["ui_restore_problems"] = snap.problems
+    got = {it.GetStart(): it for it in tl.GetItemListInTrack("audio", 1) or []}
+    for t in targets:
+        it = got.get(t["start"])
+        if it is None:
+            problems.append(f"item {t['index']} ({t['name']}): no sound placed under it "
+                            "(a source with no audio places none)")
+            continue
+        row = {"index": t["index"], "name": it.GetName(), "start": t["start"],
+               "frames": it.GetDuration()}
+        if row["frames"] != t["frames"]:
+            problems.append(f"item {t['index']}: its sound is {row['frames']} frames, its "
+                            f"picture {t['frames']}")
+        out["placed"].append(row)
+    if len(got) != len(out["placed"]):
+        problems.append(f"A1 holds {len(got)} item(s), {len(out['placed'])} of them under a picture")
+    after = [(it.GetStart(), it.GetDuration()) for it in tl.GetItemListInTrack("video", track) or []]
+    if after != picture:
+        problems.append(f"V{track} changed while the sound was placed; check it by eye")
+    out["exit_status"] = 1 if problems else 0
+    return out
+
+
 def queue_render(resolve, project_name, timeline, destination, output_dir=None,
                  name_parts=None, config=None, dry_run=False, project_id=None, expect_sha=None,
                  check_cancel=None, volumes_root="/Volumes"):
