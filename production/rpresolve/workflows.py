@@ -19,6 +19,7 @@ would carry out differs from the one the dry run showed.
 
 import hashlib
 import json
+import math
 import os
 import subprocess
 import re
@@ -1705,6 +1706,12 @@ def stabilize(resolve, project_name, timeline, track=1, items=None, max_items=No
     return out
 
 
+def _rate(value):
+    """A frame rate or frame count as Resolve gives it ('59.94', '24.0', 2912), or None."""
+    m = re.match(r"\s*(\d+(?:\.\d+)?)", str(value if value is not None else ""))
+    return float(m.group(1)) if m and float(m.group(1)) > 0 else None
+
+
 def camera_sound(resolve, project_name, timeline, track=1, dry_run=False, project_id=None,
                  check_cancel=None, expect_sha=None):
     """Each clip's own camera sound on A1 of an ' [auto]' timeline, under its picture on
@@ -1734,6 +1741,7 @@ def camera_sound(resolve, project_name, timeline, track=1, dry_run=False, projec
         raise Refused(f"A1 of '{tl_name}' already holds {len(held)} item(s); camera sound goes "
                       "only onto an empty A1.")
     items = tl.GetItemListInTrack("video", track) or []
+    tl_fps = _rate(api._safe_call(tl, "GetSetting", "timelineFrameRate"))
     targets, skipped, clips = [], [], {}
     for n, it in enumerate(items, 1):
         clip = api._safe_call(it, "GetMediaPoolItem")
@@ -1746,13 +1754,21 @@ def camera_sound(resolve, project_name, timeline, track=1, dry_run=False, projec
         t = {"index": n, "name": it.GetName(), "item_id": api._safe_call(it, "GetUniqueId"),
              "start": it.GetStart(), "frames": it.GetDuration(),
              "source_start": int(a), "source_end": int(b)}
+        # The picture's source end is rounded down, so its sound came out a frame short of
+        # the picture (2026-11-27, 23 of 23). Count the picture's frames in the clip's rate,
+        # rounded up, as assemble_timeline does (T1), and stay inside the clip.
+        sf, have = _rate(api._safe_call(clip, "GetClipProperty", "FPS")), _rate(
+            api._safe_call(clip, "GetClipProperty", "Frames"))
+        end = int(math.ceil(t["frames"] * sf / tl_fps - 1e-6)) + t["source_start"] \
+            if sf and tl_fps else t["source_end"]
+        t["audio_end"] = max(t["source_end"], min(end, int(have)) if have else end)
         clips[n] = clip
         targets.append(t)
     if not targets:
         raise Refused(f"no clip on V{track} of '{tl_name}' to place sound under.")
     sha = plan_sha("camera_sound", pin.unique_id, tl_id, track,
                    [(t["index"], t["item_id"], t["start"], t["frames"], t["source_start"],
-                     t["source_end"]) for t in targets])
+                     t["audio_end"]) for t in targets])
     out = {"project": {"name": pin.name, "id": pin.unique_id},
            "timeline": {"name": tl_name, "unique_id": tl_id, "track": track},
            "targets": targets, "skipped": skipped, "placed": [], "problems": [],
@@ -1778,7 +1794,7 @@ def camera_sound(resolve, project_name, timeline, track=1, dry_run=False, projec
             raise api.WriteNotApplied(f"could not make '{tl_name}' current to place sound on it")
         project.GetMediaPool().AppendToTimeline(
             [{"mediaPoolItem": clips[t["index"]], "startFrame": t["source_start"],
-              "endFrame": t["source_end"], "mediaType": 2, "trackIndex": 1,
+              "endFrame": t["audio_end"], "mediaType": 2, "trackIndex": 1,
               "recordFrame": t["start"]} for t in targets])
     now = int(tl.GetTrackCount("audio") or 0)
     if now > top:  # T36: deleting is not this tool's to do (the write-path guard)
