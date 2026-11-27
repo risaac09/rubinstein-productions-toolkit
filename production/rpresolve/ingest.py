@@ -10,6 +10,10 @@ that keep it safe on a live project:
       read back (api.set_clip_property_checked).
     - A row detect could not pin ('review') is imported untagged into a
       Review bin; derived renders, proxies and corrupt files are skipped.
+    - with_answers() lays a person's recorded colour mode (the card record's
+      answers.profile) over a review row: Normal and HLG are tagged, D-Log M
+      goes untagged into its camera bin (Resolve has no D-Log M input colour
+      space; it is graded through a D-Log M to Rec.709 LUT).
     - Camera RAW (BRAW) is imported untagged: RCM decodes it without a
       per-clip input tag.
 
@@ -21,13 +25,41 @@ import os
 import unicodedata
 
 from . import api
+from . import card as rpcard
 from . import detect
+from . import squeeze
 
 REVIEW_BIN = "Review"
 SKIP_PROFILES = {"derived": "derived file (render or export)",
                  "proxy": "camera proxy: link, do not import",
                  detect.CORRUPT: "corrupt or truncated file"}
 DATA_LEVELS = {"full": "Full", "video": "Video"}
+
+# A person's colour-mode answer as Resolve's Input Color Space; '' when Resolve has none.
+ANSWER_SPACES = {"Normal": detect.CS_CAMERA_SDR, "HLG": detect.CS_HLG, "D-Log M": ""}
+assert set(ANSWER_SPACES) == set(rpcard.PROFILES)
+DLOG_M_NOTE = ("D-Log M by a person's answer; Resolve has no D-Log M input colour space, "
+               "so it is not tagged: grade it through a D-Log M to Rec.709 LUT")
+
+
+def with_answers(rows):
+    """rows with a person's recorded colour mode laid over each review row whose clip's
+    card answers it (answers.profile); every other row, a pinned or corrupt one included,
+    as it is. Never a guess: a clip with no answer stays review."""
+    out = []
+    for row in rows:
+        root = row.get("profile") == detect.REVIEW and squeeze.card_root(row["path"])
+        card = rpcard.loaded(root) if root else None
+        clip = card and rpcard.clip_for(card, row["path"])[0]
+        ans = clip and rpcard.profile_answer(card, clip)
+        if ans not in ANSWER_SPACES:
+            out.append(row)
+            continue
+        note = DLOG_M_NOTE if not ANSWER_SPACES[ans] else f"{ans} by a person's answer on the card record"
+        out.append(dict(row, profile=ans, input_color_space=ANSWER_SPACES[ans], confidence="person",
+                        answer="person", note=note))
+    return out
+
 
 # Actions a plan entry can carry.
 TAG, IMPORT_ONLY, SKIP = "tag", "import-only", "skip"
@@ -69,6 +101,8 @@ def plan_ingest(rows, existing_paths, parent="Source"):
             entry["reason"] = "already in the media pool before this run; left untouched"
         elif profile in SKIP_PROFILES:
             entry["reason"] = SKIP_PROFILES[profile]
+        elif row.get("answer") and not cs:
+            entry.update(action=IMPORT_ONLY, bin=[parent, camera_bin(entry["camera"])], reason=row["note"])
         elif profile == detect.REVIEW or not cs:
             entry.update(action=IMPORT_ONLY, bin=[parent, REVIEW_BIN],
                          reason="detect could not pin a profile: " + (row.get("note") or "no note"))

@@ -121,7 +121,7 @@ No monitoring LUT route is confirmed for the S9. Check V-Log is the selected Pho
 | Base ISO | to be measured. The maker gives a video range of 100 to 51200, and no base ISO for D-Log M. | to be measured |
 | Exposure target | to be measured. No D-Log M curve is in this repository, so no grey level is quoted here. | to be measured |
 | Zebra and waveform | not set; the camera's exposure tools are not yet read for this page | to be measured |
-| Resolve input | to be measured. `detect` sends these clips to review: D-Log M is not in the headers, and no Resolve colour-space name has been checked. | to be measured |
+| Resolve input | none: Resolve 21.2 lists no D-Log M input colour space (only DJI D-Gamut/D-Log, another curve). `detect` sends these clips to review, because D-Log M is not in the headers; once `project answer --profile` records the mode, ingest files them untagged in the camera bin, to grade through a D-Log M to Rec.709 LUT. | Resolve 21.2 app, 2026-11-27 |
 | Record per clip | Colour mode (Normal, D-Log M or HLG), which the file cannot show; ISO | camera table |
 
 DJI lists an [official D-Log M to Rec.709 LUT](https://support.dji.com/help/content?customId=01700007105&spaceId=17&re=US&lang=en&documentType=&paperDocType=ARTICLE) for this body. A file's name does not say which body it was made for: check the hash and the header of the file you use. Neither the file nor the mode is confirmed by the darkest pixel in the frame; log and display-referred clips overlap there.

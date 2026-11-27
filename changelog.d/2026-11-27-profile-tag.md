@@ -1,0 +1,1 @@
+ingest and assemble_timeline read a person's recorded colour mode for a detect review clip: Normal is tagged Rec.709 Gamma 2.4, HLG Rec.2100 HLG, and D-Log M goes untagged into its camera bin with a note to grade it through a D-Log M to Rec.709 LUT, since Resolve 21.2 has no D-Log M input colour space.

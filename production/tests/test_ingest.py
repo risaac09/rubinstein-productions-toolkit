@@ -114,6 +114,42 @@ class TestPlan(unittest.TestCase):
         self.assertIn("VFR", plan[1]["reason"])
         self.assertIn("D-Log M", plan[3]["reason"])
 
+    def test_a_recorded_profile_answer_tags_or_files_a_review_row(self):
+        import shutil
+        import subprocess
+        tmp = os.path.realpath(tempfile.mkdtemp(prefix="ingest-answer-"))
+        self.addCleanup(shutil.rmtree, tmp, True)
+        card = os.path.join(tmp, "DJIA5-000000")
+        os.makedirs(os.path.join(card, "DCIM"))
+        names = ("A.MP4", "B.MP4", "C.MP4", "D.MP4")
+        for n in names:
+            Path(card, "DCIM", n).write_bytes(b"x")
+
+        def card_cmd(*a):
+            subprocess.run([sys.executable, "-m", "rpresolve.cmd_card", *a, "--apply"], check=True,
+                           capture_output=True, cwd=str(Path(__file__).resolve().parent.parent))
+        card_cmd("init", "--retrofit", card, "--cam", "DJIA5")
+        card_cmd("set", card, "--profile", "D-Log M", "--clip", "A.MP4")
+        card_cmd("set", card, "--profile", "Normal", "--clip", "B.MP4")
+        card_cmd("set", card, "--profile", "HLG", "--clip", "D.MP4")
+        paths = [os.path.join(card, "DCIM", n) for n in names]
+        dji = dict(camera="DJI Osmo Action 5 Pro", profile=detect.REVIEW, cs="", note="not in the headers")
+        rows = [row(paths[0], **dji), row(paths[1], **dji), row(paths[2], **dji),
+                row(paths[3], camera="DJI Osmo Action 5 Pro", profile="HLG", cs=detect.CS_HLG)]
+        rows[3]["confidence"] = "medium"  # pinned from the VUI: the answer never stands over it
+        got = ingest.with_answers(rows)
+        self.assertEqual(got[3], rows[3])
+        self.assertEqual(got[2], rows[2])  # no answer: still review
+        self.assertEqual([(r["profile"], r["input_color_space"], r["confidence"]) for r in got[:2]],
+                         [("D-Log M", "", "person"), ("Normal", detect.CS_CAMERA_SDR, "person")])
+        plan = ingest.plan_ingest(got, [], parent="Source")
+        cam = ["Source", "DJI Osmo Action 5 Pro"]
+        self.assertEqual([(e["action"], e["bin"], e["input_color_space"]) for e in plan], [
+            (ingest.IMPORT_ONLY, cam, ""), (ingest.TAG, cam, detect.CS_CAMERA_SDR),
+            (ingest.IMPORT_ONLY, ["Source", ingest.REVIEW_BIN], ""), (ingest.TAG, cam, detect.CS_HLG)])
+        self.assertIn("D-Log M to Rec.709 LUT", plan[0]["reason"])
+        self.assertFalse(detect.needs_review(got[0]))
+
     def test_existing_pool_paths_are_never_planned(self):
         nfd = unicodedata.normalize("NFD", "/media/card/Café.mov")
         plan = ingest.plan_ingest([row("/media/card/Café.mov")], [nfd])

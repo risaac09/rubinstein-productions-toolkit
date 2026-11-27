@@ -113,6 +113,7 @@ def ingest(resolve, project_name, paths, parent="Source", dry_run=False, project
     missing = []
     if rows is None:
         rows, missing = rpdetect.detect_paths(paths)
+    rows = rpingest.with_answers(rows)
     if not rows:
         raise Refused("No video files found (directories are searched recursively).")
 

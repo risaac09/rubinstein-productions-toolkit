@@ -53,7 +53,7 @@
       "input_curve": "DJI D-Log M (no published curve in this repository; to be measured)",
       "input_primaries": "to be measured",
       "measure_linearise": "none: rpresolve.color has no D-Log M curve",
-      "resolve_input_colour_space": "to be measured: detect sends these clips to review, because D-Log M is not in the headers",
+      "resolve_input_colour_space": "none: Resolve 21.2 has no D-Log M input colour space; a recorded answer files the clip untagged, to grade through a D-Log M to Rec.709 LUT",
       "record_per_clip": ["Colour mode (Normal, D-Log M or HLG): it cannot be read from the file", "ISO"]
     },
     {

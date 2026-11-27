@@ -260,6 +260,7 @@ def colour_plan(project, root, p):
     notes, err = [], ""
     try:
         rows, _ = rpdetect.detect_paths(paths)
+        rows = rpingest.with_answers(rows)
     except rpdetect.DetectError as e:
         rows, err = [], f"detect did not run: {e}"
         notes.append(err)
