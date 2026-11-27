@@ -1,0 +1,1 @@
+project answer --profile records the colour mode a person gave for the clips detect sends to review (DJI Normal, D-Log M or HLG) in the card record's answers.profile; the next project start drops those clips' profile rows from open. A clip detect pinned from its headers is refused, and a second answer needs --replace.

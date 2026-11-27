@@ -37,6 +37,7 @@ KEYS_V2 = SEVEN + ("schema", "origin", "shoot", "project", "answers", "clips", "
 OPTIONAL = ("note",)  # written by hand on two early retrofits
 SCHEMA = {"name": "card.record", "version": 2}
 STANDARDS = ("S1", "S2", "S3", "S4", "S5")
+PROFILES = ("Normal", "D-Log M", "HLG")  # what a person may answer where detect.py rule 7 (DJI) cannot pin it
 
 STILLS = {".jpg", ".jpeg", ".heic", ".heif", ".png", ".tif", ".tiff", ".dng", ".arw", ".cr2", ".cr3",
           ".nef", ".raf", ".rw2", ".orf"}
@@ -301,23 +302,37 @@ def _shoot_problems(s):
     return bad
 
 
+def profile_problem(p):
+    """Why `p` is not a profile a person may record, or None."""
+    return None if p in PROFILES else f"profile {p!r} is not one of {', '.join(PROFILES)}"
+
+
+def _profile_problems(where, p):
+    return [f"{where}: {profile_problem(p)}"] if profile_problem(p) else []
+
+
+ANSWERS = (("squeeze", _factor_problems), ("profile", _profile_problems))
+
+
 def _answers_problems(a, clip_ids):
     if not isinstance(a, dict):
         return ["answers must be an object"]
-    sq = a.get("squeeze")
-    if sq is None:
-        return []
-    if not isinstance(sq, dict) or not isinstance(sq.get("clips", {}), dict):
-        return ["answers.squeeze must be {default, clips, by, at}"]
     bad = []
-    if sq.get("default") is not None:
-        bad += _factor_problems("answers.squeeze.default", sq["default"])
-    for cid, f in sorted((sq.get("clips") or {}).items()):
-        bad += _factor_problems(f"answers.squeeze.clips.{cid}", f)
-        if clip_ids and cid not in clip_ids:
-            bad.append(f"answers.squeeze names {cid}, which is not a clip of this card")
-    if not isinstance(sq.get("by"), str) or not (sq.get("at") is None or isinstance(sq.get("at"), str)):
-        bad.append("answers.squeeze needs by (a string) and at (a time or null)")
+    for key, problems in ANSWERS:
+        ans = a.get(key)
+        if ans is None:
+            continue
+        if not isinstance(ans, dict) or not isinstance(ans.get("clips", {}), dict):
+            bad.append(f"answers.{key} must be {{default, clips, by, at}}")
+            continue
+        if ans.get("default") is not None:
+            bad += problems(f"answers.{key}.default", ans["default"])
+        for cid, v in sorted((ans.get("clips") or {}).items()):
+            bad += problems(f"answers.{key}.clips.{cid}", v)
+            if clip_ids and cid not in clip_ids:
+                bad.append(f"answers.{key} names {cid}, which is not a clip of this card")
+        if not isinstance(ans.get("by"), str) or not (ans.get("at") is None or isinstance(ans.get("at"), str)):
+            bad.append(f"answers.{key} needs by (a string) and at (a time or null)")
     return bad
 
 
@@ -440,6 +455,13 @@ def squeeze_answer(card, clip):
         return float(f), "record"
     tag = squeeze.file_tag(os.path.join(card["root"], clip["relpath"]))
     return (tag, "file tag") if tag is not None else (None, None)
+
+
+def profile_answer(card, clip):
+    """The colour mode a person recorded for one clip dict of a loaded card (answers.profile),
+    or None. It speaks only where detect could not read the profile from the file's headers."""
+    pr = card["answers"].get("profile") or {}
+    return (pr.get("clips") or {}).get(clip["clip_id"], pr.get("default"))
 
 
 def _record_newer(root, checked_utc):
@@ -597,10 +619,32 @@ def write_new(path, text):
         raise CardError(f"{path} exists; a sidecar is never overwritten")
 
 
-def plan_set(card, default=None, clips=None, project=None, refresh_shoot_=False, info=None):
+def _set_answer(card, rec, key, problem, default, clips):
+    """rec["answers"][key] with `default` and `clips` (a clip id or file name to a value) laid
+    over what the card holds, by a person, now. Raises CardError for a stranger or a bad value."""
+    # card["answers"] holds a legacy squeeze.json folded in, which a stored answers.squeeze would hide
+    ans = dict(card["answers"].get(key) or {"default": None, "clips": {}})
+    ans["clips"] = dict(ans.get("clips") or {})
+    ids = {c["clip_id"] for c in rec["clips"]}
+    names = {os.path.basename(c["relpath"]): c["clip_id"] for c in rec["clips"]}
+    strangers = [c for c in clips or {} if c not in ids and c not in names]
+    if strangers:
+        raise CardError(f"no such clip in {card['name']}: {', '.join(sorted(strangers))}")
+    for who, v in [("default", default)] * (default is not None) + sorted((clips or {}).items()):
+        if problem(v):
+            raise CardError(f"{who}: {problem(v)}")
+    if default is not None:
+        ans["default"] = default
+    ans["clips"].update({(c if c in ids else names[c]): v for c, v in (clips or {}).items()})
+    ans.update(by="person", at=now())
+    rec["answers"][key] = ans
+
+
+def plan_set(card, default=None, clips=None, project=None, refresh_shoot_=False, info=None,
+             profile=None, profile_clips=None):
     """The schema 2 record that results from answering for a loaded card: `default` is the
     squeeze factor for clips not named, `clips` maps a clip id or file name to a factor,
-    `project` a slug, `refresh_shoot_` recomputes `shoot` from the media files' capture times (`info`, a dict, gets
+    `profile` and `profile_clips` do the same for the colour mode (one of PROFILES), `project` a slug, `refresh_shoot_` recomputes `shoot` from the media files' capture times (`info`, a dict, gets
     info['shoot'] = how, see refresh_shoot). Nothing is written. Raises CardError."""
     if card["version"] is None:
         raise CardError(f"{card['name']}: no readable record ({card['problems'][0]}); run init --retrofit first")
@@ -611,22 +655,9 @@ def plan_set(card, default=None, clips=None, project=None, refresh_shoot_=False,
     else:
         rec = upgrade(card)
     if default is not None or clips:
-        # card["answers"] holds a legacy squeeze.json folded in, which a stored answers.squeeze would hide
-        sq = dict(card["answers"].get("squeeze") or {"default": None, "clips": {}})
-        sq["clips"] = dict(sq.get("clips") or {})
-        ids = {c["clip_id"] for c in rec["clips"]}
-        names = {os.path.basename(c["relpath"]): c["clip_id"] for c in rec["clips"]}
-        strangers = [c for c in clips or {} if c not in ids and c not in names]
-        if strangers:
-            raise CardError(f"no such clip in {card['name']}: {', '.join(sorted(strangers))}")
-        for who, f in [("default", default)] * (default is not None) + sorted((clips or {}).items()):
-            if squeeze.factor_problem(f):
-                raise CardError(f"{who}: {squeeze.factor_problem(f)}")
-        if default is not None:
-            sq["default"] = default
-        sq["clips"].update({(c if c in ids else names[c]): f for c, f in (clips or {}).items()})
-        sq.update(by="person", at=now())
-        rec["answers"]["squeeze"] = sq
+        _set_answer(card, rec, "squeeze", squeeze.factor_problem, default, clips)
+    if profile is not None or profile_clips:
+        _set_answer(card, rec, "profile", profile_problem, profile, profile_clips)
     if project is not None:
         if not SLUG.match(project):
             raise CardError("a project is a slug: a-z, 0-9 and hyphens")

@@ -7,6 +7,7 @@
 ```
 project start CARD [--project SLUG] [--new-project] [--cam CAM] [--apply]
 project answer SLUG [--squeeze F [--clip ID]... [--replace]] [--resolved] [--apply]
+project answer SLUG --profile P [--clip ID]... [--replace] [--apply]
 project answer SLUG [--piece NAME] [--shape WxH] [--look LUT] [--destination KEY --name-part K=V ...] [--apply]
 project answer SLUG [--piece NAME] --pick MANIFEST [--ledger DRAFTS [--draft PLAN]] [--exclude LIST] [--apply]
 project build SLUG [--piece NAME] [--manifest PATH] [--name NAME] [--apply]
@@ -20,8 +21,8 @@ project status SLUG
 | | Step | Runs | Stops when |
 |---|---|---|---|
 | 1 | copy and verify | `offload.sh copy`, then the record | a volume has no `--cam` or no landing root; a dry run stops after naming the copy |
-| 2 | identify | `card set --project SLUG`, `detect --json` | `detect` fails. Clips it marks review or corrupt are listed in `open` |
-| 3 | open questions | `card load`, then `sheets --only` for the clips in question | any clip has no squeeze answer (none recorded, no BRAW tag). Answer with `project answer`; a clip that already holds an answer is refused unless `--replace` |
+| 2 | identify | `card set --project SLUG`, `detect --json` | `detect` fails. Clips it marks review or corrupt are listed in `open` as `profile <file>` or `corrupt <file>`; a corrupt row takes no profile answer and stays open |
+| 3 | open questions | `card load`, then `sheets --only` for the clips in question | any clip has no squeeze answer (none recorded, no BRAW tag). Answer with `project answer`; a clip that already holds an answer is refused unless `--replace`. A `profile <file>` row does not stop the chain; `project answer SLUG --profile P` records the colour mode (`Normal`, `D-Log M` or `HLG`) on the card for the review clips named by `--clip`, or with none named for those not yet answered, and the next `project start` drops the answered rows from `open`. A clip `detect` pinned from its headers is refused, and so is one that holds an answer unless `--replace` |
 | 4 | index | the configured indexer, `index --card CARD` | the indexer fails; skipped with a note when none is configured |
 | 5 | contact sheets | `sheets CARD -o <sheets root>/<slug>/sheets` | sheets fail; skipped when no sheets root |
 | 6 | Resolve colour | prints the `set_color_management` call with preset `managed-dwg` | always, until a person creates the empty project (the API cannot) and runs it; then `project answer SLUG --resolved --apply` |

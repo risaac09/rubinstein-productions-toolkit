@@ -312,6 +312,7 @@ def step_identify(ch, card):
             ch.tick(f"  detect: {done} of {len(files)} clips")
     review = sorted(r["path"] for r in rows if r.get("profile") in ("review", "corrupt"))
     ch.st["detect_review"] = review
+    ch.st["detect_corrupt"] = sorted(r["path"] for r in rows if r.get("profile") == "corrupt")
     ch.say(f"  detect: {len(rows)} clip(s), {len(review)} for review")
     ch.mark("identify", "done", f"{len(rows)} clips, {len(review)} for review")
 
@@ -319,10 +320,15 @@ def step_identify(ch, card):
 def step_ask(ch, card):
     c = rpcard.load(card)
     squeeze = [o for o in c["open"] if o.startswith("squeeze ")]
-    ch.st["open"] = squeeze + [f"profile {os.path.basename(p)}" for p in ch.st.get("detect_review", [])]
+    # a review row leaves open once a person recorded the clip's colour mode on the card
+    corrupt = ch.st.get("detect_corrupt", [])  # stays open: no answer makes a corrupt file whole
+    profile = [p for p in ch.st.get("detect_review", []) if p in corrupt
+               or not (rpcard.clip_for(c, p)[0] and rpcard.profile_answer(c, rpcard.clip_for(c, p)[0]))]
+    ch.st["open"] = squeeze + [f"{'corrupt' if p in corrupt else 'profile'} {os.path.basename(p)}" for p in profile]
     if not squeeze:
         ch.mark("ask", "done", "squeeze answered for every clip"
-                + (f"; {len(ch.st['detect_review'])} detect review row(s) listed in open" if ch.st.get("detect_review") else ""))
+                + (f"; {len(profile)} detect review row(s) listed in open: project answer {ch.slug} "
+                   "--profile P [--clip ID ...] --apply" if profile else ""))
         return
     names = [next((k["relpath"] for k in c["clips"] if k["clip_id"] == o[len("squeeze "):]), None) for o in squeeze]
     only = [os.path.join(card, n) for n in names if n]
@@ -504,6 +510,44 @@ def _squeeze_held(card, clips):
     return [c["clip_id"] for c in hit if rpcard.squeeze_answer(card, c)[0] is not None]
 
 
+def _profile_plan(st, profile, clips, replace):
+    """[(card, [clip_id])] that `card set --profile` writes: the detect review clips named (by
+    id or file name), or with none named those without an answer (all of them when each has
+    one). Refused for a clip detect pinned from its headers, a name no card holds, and, without
+    `replace`, a clip that holds an answer."""
+    if profile not in rpcard.PROFILES:
+        raise ProjectError(rpcard.profile_problem(profile))
+    corrupt = set(st.get("detect_corrupt") or [])
+    review, plan, seen = [p for p in st.get("detect_review") or [] if p not in corrupt], [], set()
+    for card in st["cards"]:
+        c = rpcard.load(card)
+        asked = [k for k in (rpcard.clip_for(c, p)[0] for p in review) if k]
+        if clips:
+            hit = [k for k in c["clips"] if k["clip_id"] in clips or os.path.basename(k["relpath"]) in clips]
+            seen |= {n for k in hit for n in (k["clip_id"], os.path.basename(k["relpath"]))}
+            bad = [k["clip_id"] for k in hit if os.path.join(card, k["relpath"]) in corrupt]
+            if bad:
+                raise ProjectError(f"detect found {', '.join(bad[:3])} corrupt; a profile answer does not clear that")
+            pinned = [k["clip_id"] for k in hit if k not in asked]
+            if pinned:
+                raise ProjectError(f"detect read the profile of {', '.join(pinned[:3])} from its headers; "
+                                   "a person's answer never overwrites it")
+        else:
+            hit = [k for k in asked if rpcard.profile_answer(c, k) is None] or asked
+        held = [k["clip_id"] for k in hit if rpcard.profile_answer(c, k) is not None]
+        if held and not replace:
+            raise ProjectError(f"{os.path.basename(card)}: profile is already answered for {len(held)} clip(s) "
+                               f"({', '.join(held[:3])}{' ...' if len(held) > 3 else ''}); give --replace to change it")
+        if hit:
+            plan.append((card, [k["clip_id"] for k in hit]))
+    strangers = sorted(set(clips) - seen)
+    if strangers:
+        raise ProjectError(f"no such clip on the project's cards: {', '.join(strangers)}")
+    if not plan:
+        raise ProjectError("no detect review clip to answer; run project start first")
+    return plan
+
+
 def _music_pick(cfg, key_dir, letter, start=None):
     """The pick of a `music candidates` packet: the key.json beside its excerpts says which
     track the letter stood for, relative to the music root; the answer holds its absolute path."""
@@ -525,8 +569,8 @@ def _music_pick(cfg, key_dir, letter, start=None):
 
 def answer(cfg, slug, apply, squeeze=None, clips=(), resolved=False, say=print,
            shape=None, look=None, destination=None, name_parts=(), music=None, pick=None, piece=None,
-           replace=False, clear_music=False):
-    """Record an answer through `card set`, that the Resolve project is set up, or one of the
+           replace=False, clear_music=False, profile=None):
+    """Record an answer through `card set` (squeeze, or the colour mode of detect review clips), that the Resolve project is set up, or one of the
     build answers (shape, look, destination, music, the picked manifest) in the project state:
     the project's, or with `piece` that piece's own, which a build of it reads over the project's."""
     ch = Chain(cfg, slug, apply, say)
@@ -574,6 +618,7 @@ def answer(cfg, slug, apply, squeeze=None, clips=(), resolved=False, say=print,
     if resolved:
         ch.mark("resolve", "done", "project created and colour set by a person")
         say("resolve: recorded" + ("" if apply else " (dry run: not written)"))
+    profiles = _profile_plan(ch.st, profile, set(clips), replace) if profile is not None else []
     if squeeze is not None:
         for card in ch.st["cards"] if not replace else ():
             held = _squeeze_held(rpcard.load(card), set(clips))
@@ -587,6 +632,14 @@ def answer(cfg, slug, apply, squeeze=None, clips=(), resolved=False, say=print,
             say(out.strip() or err.strip())
             if rc != 0:
                 return 1
+    for card, ids in profiles:
+        rc, out, err = RUN(module("card", "set", card, "--profile", profile, *[a for c in ids for a in ("--clip", c)],
+                                  *(["--apply"] if apply else [])))
+        say(out.strip() or err.strip())
+        if rc != 0:
+            return 1
+    if profiles and apply:
+        say(f"open is refreshed by the next run: project start {profiles[0][0]} --apply")
     return 0
 
 

@@ -105,7 +105,11 @@ class Loader(Base):
                          (dict(rec, clips=rec["clips"] * 2), "twice"),
                          (dict(rec, answers={"squeeze": {"default": 9, "clips": {}, "by": "p", "at": None}}), "squeeze"),
                          (dict(rec, answers={"squeeze": {"default": None, "clips": {"CAMA-012345/NOPE": 1.5},
-                                                         "by": "p", "at": None}}), "not a clip")):
+                                                         "by": "p", "at": None}}), "not a clip"),
+                         (dict(rec, answers={"profile": {"default": "Log", "clips": {}, "by": "p", "at": None}}),
+                          "not one of Normal"),
+                         (dict(rec, answers={"profile": {"default": None, "clips": {"CAMA-012345/NOPE": "HLG"},
+                                                         "by": "p", "at": None}}), "answers.profile names")):
             self.assertTrue(any(why in p for p in card.validate(bad)), (why, card.validate(bad)))
         self.assertEqual(card.validate({k: v for k, v in rec.items() if k != "clips"}), ["clips missing"])
 
@@ -422,6 +426,20 @@ class Command(Base):
         self.assertEqual(after["answers"]["squeeze"]["clips"], {"CAMA-012345/AAA0002": 1.5})
         self.assertEqual(card.validate(after), [])
         self.assertEqual(run_cmd("set", self.tmp + "/CAMA-012345", "--squeeze", "3", "--apply")[0], 1)
+
+    def test_set_records_a_profile_beside_the_squeeze(self):
+        make_card(self.tmp)
+        root = self.tmp + "/CAMA-012345"
+        rc, out, _ = run_cmd("set", root, "--profile", "D-Log M", "--clip", "AAA0002.MOV", "--squeeze", "1", "--apply")
+        self.assertEqual(rc, 0)
+        self.assertIn("profile D-Log M for 1 clip(s)", out)
+        rec = json.loads(Path(self.tmp, "CAMA-012345.card.json").read_text())
+        self.assertEqual(rec["answers"]["profile"]["clips"], {"CAMA-012345/AAA0002": "D-Log M"})
+        self.assertEqual((rec["answers"]["profile"]["default"], rec["answers"]["squeeze"]["clips"]),
+                         (None, {"CAMA-012345/AAA0002": 1}))
+        self.assertEqual(card.validate(rec), [])
+        c = card.load(root)
+        self.assertEqual([card.profile_answer(c, k) for k in c["clips"]], [None, "D-Log M"])
 
     def test_set_records_a_squeeze_in_the_height_as_one_over_the_lens(self):
         make_card(self.tmp)

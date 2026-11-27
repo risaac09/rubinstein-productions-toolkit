@@ -9,6 +9,10 @@ project: start a project from a camera card, resumable (production/project-start
                                   record a squeeze answer through `card set` (a clip that holds one
                                   is refused without --replace), or that a person made the Resolve
                                   project and set its colour
+    project answer SLUG --profile P [--clip ID]... [--replace] [--apply]
+                                  record the colour mode (Normal, D-Log M, HLG) of the clips detect
+                                  sent to review, through `card set`; a clip detect pinned from its
+                                  headers is refused, and one that holds an answer without --replace
     project answer SLUG [--piece NAME] [--shape WxH] [--look LUT] [--destination KEY --name-part K=V ...] [--apply]
                                   record the delivery shape, the look, the destination once each
                                   (who and when), in the project state; with --piece, for that piece
@@ -69,7 +73,9 @@ def add_arguments(p):
     p.add_argument("--music-pick", metavar="LETTER", help="answer: the letter the person picked")
     p.add_argument("--music-in", type=float, metavar="SEC", help="answer: where in the track the music starts (default the packet's start)")
     p.add_argument("--clear-music", action="store_true", help="answer: forget the recorded music pick")
-    p.add_argument("--replace", action="store_true", help="answer: --squeeze may replace a clip's answer")
+    p.add_argument("--profile", choices=rpproject.rpcard.PROFILES,
+                   help="answer: the colour mode of the clips detect sent to review")
+    p.add_argument("--replace", action="store_true", help="answer: --squeeze or --profile may replace a clip's answer")
     p.add_argument("--piece", help="answer, build: the piece (a slug) whose own answers lie over the project's")
     p.add_argument("--pick", metavar="MANIFEST", help="answer: the picked manifest")
     p.add_argument("--ledger", metavar="DRAFTS", help="answer: with --pick, the draft farm's drafts.json for it")
@@ -100,7 +106,8 @@ def run(args):
                                     music=(args.music_key, args.music_pick, args.music_in) if args.music_key or args.music_pick else None,
                                     pick=(args.pick, args.ledger, args.exclude, args.draft)
                                     if args.pick or args.ledger or args.exclude or args.draft else None,
-                                    piece=args.piece, replace=args.replace, clear_music=args.clear_music)
+                                    piece=args.piece, replace=args.replace, clear_music=args.clear_music,
+                                    profile=args.profile)
         if args.action == "build":
             return rpproject.build(cfg, args.target, args.manifest, args.name, args.apply, piece=args.piece)
         return rpproject.status(cfg, args.target)
