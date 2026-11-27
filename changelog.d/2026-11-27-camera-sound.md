@@ -1,0 +1,1 @@
+New MCP write tool camera_sound: each clip's own camera sound on A1 of an [auto] timeline, under its picture (same clip, source frames and record frame), for a timeline built picture only; the picture is read before and after and left alone.
