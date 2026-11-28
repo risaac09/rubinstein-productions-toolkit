@@ -110,6 +110,25 @@ class TestRows(unittest.TestCase):
         self.assertEqual([(r["text"], r["suggestion"]) for r in soft],
                          [("you know", tr.KEEP), ("like", tr.KEEP)])
 
+    def test_an_opening_okay_so_is_a_cut_candidate(self):
+        words = [W("Um,", 0.5, 0.7), W("okay,", 1.0, 1.3), W("so", 1.4, 1.6), W("today", 1.8, 2.1),
+                 W("so", 4.0, 4.2), W("okay", 4.3, 4.6), W("good.", 4.7, 5.0)]
+        rows, _ = tr.review_range("/x.wav", words, 0.0, 10.0, audio=False)
+        f = by_kind(rows, tr.FILLER)
+        self.assertEqual([(r["text"], r["confidence"], r["suggestion"]) for r in f],
+                         [("Um,", "high", tr.CUT), ("okay, so (opening)", "high", tr.CUT)])
+        self.assertEqual((f[1]["start"], f[1]["end"]), (1.0, 1.6))
+        # a range that starts after the opening does not list it
+        rows, _ = tr.review_range("/x.wav", words, 3.0, 10.0, audio=False)
+        self.assertEqual(by_kind(rows, tr.FILLER), [])
+
+    def test_an_opening_so_alone_or_a_late_okay_is_not_flagged(self):
+        alone = [W("So", 0.2, 0.4), W("I", 0.5, 0.6), W("think", 0.6, 0.9)]
+        late = [W("okay,", 12.0, 12.3), W("so", 12.4, 12.6), W("here", 12.7, 13.0)]
+        for words in (alone, late):
+            rows, _ = tr.review_range("/x.wav", words, 0.0, 20.0, audio=False)
+            self.assertEqual(by_kind(rows, tr.FILLER), [])
+
     def test_repeats(self):
         rows, _ = self.review()
         reps = by_kind(rows, tr.REPEAT)
