@@ -998,6 +998,7 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
             with open(os.path.join(out, name + ".notes.txt"), "w", encoding="utf-8") as f:
                 f.write("".join(n + "\n" for n in info["notes"]) or "everything drawn\n")
             drafts.append({"plan": name, "method": p["method"]["id"], "file": video,
+                           "manifest": os.path.abspath(os.path.join(p["dir"], "manifest.json")),
                            "seconds": round(info["frames"] / info["fps"], 3), **info})
         doc = {"drafts": drafts, "encoder": "h264_videotoolbox" if hw else "libx264",
                "lanes": lane["lanes"], "lane_probe": lane["probe"],

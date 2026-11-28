@@ -1,0 +1,1 @@
+New gate command: checks every draft in a draft-farm folder before review (qc rows, duration against planned frames, advisory scdet against the plan's hard cuts, fade-out and flash WARNs) and, with --dest, writes a loudness-fixed copy and refreshes the matching send copy. drafts.json now names each draft's manifest.
