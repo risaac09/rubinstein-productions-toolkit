@@ -1,27 +1,5 @@
 {
   "effortLevel": "medium",
-  "hooks": {
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/phase-zero-trigger.sh\""
-          }
-        ]
-      }
-    ],
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-brief.sh\""
-          }
-        ]
-      }
-    ]
-  },
   "permissions": {
     "deny": [
       "mcp__Desktop_Commander__write_file",

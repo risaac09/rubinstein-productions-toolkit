@@ -1,0 +1,1 @@
+Removed this repo's own deployed copies of the phase-zero kit from .claude/ (hooks, operating brief, model routing, retrospective) and their two hook entries in .claude/settings.json. They came from a private kit that is being retired. The phase-zero/ and public-kit/ export directories are unchanged.
