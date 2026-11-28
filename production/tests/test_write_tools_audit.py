@@ -147,7 +147,7 @@ class TestDestructiveHint(unittest.TestCase):
     def test_every_tool_that_changes_what_exists_says_so(self):
         # The exceptions to additive-only, and apply_grade (it can overwrite a graph).
         changes = {"set_color_management", "relink", "link_proxies", "stabilize", "reframe_apply",
-                   "vertical_apply", "apply_grade"}
+                   "transform_apply", "vertical_apply", "apply_grade"}
         marked = {t.name for t in server.build_registry().list()
                   if t.annotations.get("destructiveHint")}
         self.assertEqual(marked, changes)

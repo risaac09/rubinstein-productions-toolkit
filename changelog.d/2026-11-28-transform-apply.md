@@ -1,0 +1,1 @@
+The resolve MCP gains transform_apply: set Rotation Angle, Zoom, Pan and Tilt on named items of an [auto] timeline from an explicit list, read back with the timeline current and leak-checked, for clips filmed sideways or upside down. reframe_apply now shares its write and leak check.

@@ -50,14 +50,14 @@ Reads, which change nothing: `resolve_status`, `list_timelines`, `timeline_items
 
 Offline, which never connect to Resolve and take absolute paths: `detect`, `survey`, `measure`, `endcheck`, `selects`, `reframe_plan`, `deliver_check`, `deliver_captions`, `deliver_fix_loudness`, `card_show`, `card_check`, `card_set`, `sheets`, `sync_measure`, `trim_review`, `shoot_table`, `qc`, `pipeline_proof`, `deliver_manifest`, `perceive`, `audio_report`, `overlay_check`, `ograf_template_check`, `edit_methods`, `notes`, `shotlist`, `watch`.
 
-Writes, each a dry run first: `ingest`, `set_color_management`, `timeline_from_clips`, `camera_sound`, `import_timeline`, `assemble_timeline`, `duplicate_timeline_auto`, `set_current_timeline`, `cut`, `apply_grade`, `apply_effect`, `create_captions`, `queue_render`, `sync`, `relink`, `link_proxies`, `stabilize`, `reframe_apply`, `vertical_apply`, `trim_review_markers`.
+Writes, each a dry run first: `ingest`, `set_color_management`, `timeline_from_clips`, `camera_sound`, `import_timeline`, `assemble_timeline`, `duplicate_timeline_auto`, `set_current_timeline`, `cut`, `apply_grade`, `apply_effect`, `create_captions`, `queue_render`, `sync`, `relink`, `link_proxies`, `stabilize`, `reframe_apply`, `transform_apply`, `vertical_apply`, `trim_review_markers`.
 
 Which to reach for:
 
 - New project: a person makes it; `set_color_management`, then `ingest`.
 - Know the footage before touching it: `detect`, `measure`, `sync_measure`.
 - Build a timeline: `timeline_from_clips` for an ordered pull, `cut` for a manifest, `duplicate_timeline_auto` for a safe copy, `sync` for dual-system sound.
-- Grade and frame: `apply_grade`, `reframe_plan` then `reframe_apply`, `stabilize` on a sample first.
+- Grade and frame: `apply_grade`, `reframe_plan` then `reframe_apply`, `transform_apply` for a clip filmed sideways or upside down (check each on a rendered frame), `stabilize` on a sample first.
 - Captions and delivery: `create_captions`, `queue_render`, then after a person renders, `deliver_captions`, `deliver_fix_loudness` and `deliver_check` (its `ear_check` row stays owed until the reviewer logs it).
 - Trim review: `trim_review`, then `trim_review_markers`.
 - Offline clips: `relink`.
@@ -66,7 +66,7 @@ Which to reach for:
 
 1. **Dry run, then `plan_sha`.** Every write defaults to a dry run. Show the plan, then run for real with the `plan_sha` it returned. A changed plan is refused.
 2. **Name the project.** `project` must match the open project exactly, so switching projects mid-run stops the write.
-3. **Additive only.** Nothing that existed is modified. Grades go only onto timelines whose name ends ` [auto]`. Four tools change something in place, each inside a fence: `set_color_management` (a fresh, empty project only), `relink` (an offline clip, to a file that verifies as the same take), and `stabilize` and `reframe_apply` (items on an ` [auto]` timeline only). `resolve-mcp.md` has the details.
+3. **Additive only.** Nothing that existed is modified. Grades go only onto timelines whose name ends ` [auto]`. Five tools change something in place, each inside a fence: `set_color_management` (a fresh, empty project only), `relink` (an offline clip, to a file that verifies as the same take), and `stabilize`, `reframe_apply` and `transform_apply` (items on an ` [auto]` timeline only). `resolve-mcp.md` has the details.
 4. **Renders are queued, never started.** A person starts them. Only an `[auto]` timeline can be queued.
 5. **Outputs never go inside a git repository.** Most tools here refuse such a folder (`media-lane.md` lists which); give every one an output path outside any clone.
 6. **Tool results stay private.** They name media, people and transcripts. Never paste them into a commit, a pull request, an issue or anything public.
