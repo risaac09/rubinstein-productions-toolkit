@@ -1187,7 +1187,7 @@ beside them; over a whole source, times are source seconds.
 | Kind | Marker | From | Suggestion |
 |---|---|---|---|
 | `silence` | Blue | 10 ms windows below -45 dBFS (or `auto`: the quietest tenth of the windows plus 10 dB, within -70 to -30) for at least 0.8 s | cut-candidate from 2.5 s, tighten from 1.2 s, keep below |
-| `filler` | Yellow | um, uh, erm, er (high confidence); hmm, mm, mhm, ah (medium); with `--soft-fillers` also "like", "you know", "I mean" (low) | cut-candidate; keep for the low ones |
+| `filler` | Yellow | um, uh, erm, er (high confidence); hmm, mm, mhm, ah (medium); a take's opening "okay, so", a leading run of okay, ok and so that holds an okay or ok and starts in the first 10 s (high, one row, text ends "(opening)"); with `--soft-fillers` also "like", "you know", "I mean" (low) | cut-candidate; keep for the low ones |
 | `repeat` | Purple | a word or two said again back to back ("I I", "we were we were") | tighten; keep for an emphatic double ("very very", "no no", low) |
 | `asr-loop` | Red | a phrase Whisper wrote three times or more (`cutlist.repetition_loops`) | keep: re-transcribe first; rows inside it are dropped |
 

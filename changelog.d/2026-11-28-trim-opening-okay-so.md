@@ -1,0 +1,1 @@
+trim_review flags a take's opening "okay, so" (a leading run of okay, ok and so in the first 10 s that holds an okay or ok) as one high-confidence filler row, cut-candidate; okay and so stay emphatic everywhere else.

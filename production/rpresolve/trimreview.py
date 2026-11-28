@@ -12,6 +12,9 @@ Kinds, colours (markers) and suggestions:
                        min_silence_s long (cutlist.silences): cut-candidate
                        from CUT_S, tighten from TIGHTEN_S, keep below
     filler     Yellow  um, uh, erm, er (high), hmm, mm, mhm, ah (medium):
+                       cut-candidate; a take's opening "okay, so" (a leading
+                       run of okay, ok and so holding an okay or ok, starting
+                       in the first OPENING_S seconds) is one high row:
                        cut-candidate; with soft=True also "like", "you
                        know" and "I mean" (low): keep
     repeat     Purple  a word or two said again back to back ("I I", "we
@@ -65,6 +68,11 @@ SOFT_SINGLE = {"like"}
 SOFT_PAIRS = {("you", "know"), ("i", "mean")}
 EMPHATIC = {"very", "really", "so", "no", "yes", "yeah", "go", "ha", "bye", "okay", "ok",
             "hey", "wow", "right", "much", "many", "more"}
+# A talking-head take that opens on "okay, so" (a speaker settling in before the point):
+# the leading run of these words is a filler row, cut-candidate, when it holds an okay or
+# ok and starts within OPENING_S of the source's start. Anywhere else they stay emphatic.
+OPENERS = {"okay", "ok", "so"}
+OPENING_S = 10.0
 
 KEEP, TIGHTEN, CUT = "keep", "tighten", "cut-candidate"
 SILENCE, FILLER, REPEAT, LOOP = "silence", "filler", "repeat", "asr-loop"
@@ -208,6 +216,27 @@ def filler_rows(words, soft=False):
     return rows
 
 
+def opening_rows(index):
+    """The take's opening "okay, so" as one filler row (source seconds), or [].
+    index is a WordIndex of every word of the source; leading hard fillers
+    (um, uh) are passed over, as they carry rows of their own."""
+    first = [index.words[i] for _, i in index._start[:12]]
+    run = []
+    for w in first:
+        whole = cutlist.tokens(w["word"])
+        if not run and len(whole) == 1 and whole[0] in FILLERS:
+            continue
+        if whole and all(t in OPENERS for t in whole):
+            run.append(w)
+            continue
+        break
+    if not run or run[0]["start"] > OPENING_S or not any(
+            t in ("okay", "ok") for w in run for t in cutlist.tokens(w["word"])):
+        return []
+    text = " ".join(w["word"].strip() for w in run)
+    return [_row(run[0]["start"], run[-1]["end"], FILLER, f"{text} (opening)", "high", CUT)]
+
+
 def _overlaps(a, b, spans):
     return any(a < e and b > s for s, e in spans)
 
@@ -254,10 +283,13 @@ def review_range(source, words, a, b=None, audio=True, silence_db=SILENCE_DB,
     every word of the source (or None for audio only); the ones whose
     midpoint falls in [a, b) count; a WordIndex of them saves re-sorting per
     range. Returns (rows, threshold used)."""
-    inside = None
+    inside, opening = None, []
     blocks = cutlist.blocks_of(words) if words is not None else []
     if words is not None:
-        inside = (words if isinstance(words, WordIndex) else WordIndex(words)).midpoint_in(a, b)
+        index = words if isinstance(words, WordIndex) else WordIndex(words)
+        inside = index.midpoint_in(a, b)
+        opening = [r for r in opening_rows(index)
+                   if a <= (r["start"] + r["end"]) / 2 and (b is None or (r["start"] + r["end"]) / 2 < b)]
     rows, thr = [], None
     if audio:
         env = env if env is not None else envelope(source, a, b, ffmpeg)
@@ -265,7 +297,7 @@ def review_range(source, words, a, b=None, audio=True, silence_db=SILENCE_DB,
         end = b if b is not None else (env[-1][0] + cutlist.HOP_S if env else a)
         rows += silence_rows(env, inside, a, end, thr, min_silence_s, tighten_s, cut_s)
     if inside:
-        rows += filler_rows(inside, soft)
+        rows += filler_rows(inside, soft) + opening
         reps, loops = repeat_rows(inside)
         loop_spans = [(r["start"], r["end"]) for r in loops]
         rows += loops + reps
