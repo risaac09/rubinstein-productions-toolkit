@@ -39,6 +39,9 @@ def add_arguments(p):
     p.add_argument("--repeat-of", help="the ts of the line this repeats")
     p.add_argument("--review-copy", metavar="FILE", help="the review copy this approve, go or hold is about; "
                    "logs its name and sha256 for deliver-check --review-log")
+    p.add_argument("--shown", metavar="ISO_TIME", help="when the stimulus reached the reviewer, e.g. "
+                   "2026-11-24T14:59:00Z; logged as shown_ts so `python3 -m rpresolve.reviewlog minutes LOG` "
+                   "sums the reviewer's minutes")
 
 
 def run(args):
@@ -47,7 +50,7 @@ def run(args):
         log = project.review_log_path(project.load_config(overrides={"work_root": args.work_root}), args.slug) if args.slug else None
         line = reviewlog.append(args.dir, args.project, args.step, args.device, args.choice, args.reason,
                                 args.key, args.question, args.noise_type, args.repeat_of,
-                                review_copy=args.review_copy, log_path=log,
+                                review_copy=args.review_copy, log_path=log, shown=args.shown,
                                 inline_options=reviewlog.parse_options(args.option or []))
     except (reviewlog.Refused, project.ProjectError, OSError) as e:
         print(f"ERROR: {e}", file=sys.stderr)

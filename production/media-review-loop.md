@@ -185,6 +185,8 @@ Still-image decisions use `warmth`, `skin` and `contrast`, and cutting or mix de
 
 Readers ignore keys they do not know, so a line may carry more (`repeat_of` for a repeated comparison, carrying the `ts` of the line it repeats, for instance). About one comparison in ten is a repeat of an earlier one in a new order, which shows how consistent the answers are.
 
+The reviewer's time comes from the log, not an estimate. Note the time the stimulus goes out and pass it as `review-log --shown 2026-11-24T14:59:00Z`; the line then carries `shown_ts`. `python3 -m rpresolve.reviewlog minutes <project>/review/events.jsonl` sums answer time minus shown time over the timed lines and prints the count of untimed lines and the longest card. A card left open while the reviewer was away counts in full, so read the longest before using the sum.
+
 The log is distilled, by hand or by a scheduled task, into a **taste profile** kept privately, outside this repository (the location is decided, 2026-10-22): per question (warmth, skin, contrast, pace, music level) the preferred direction with its count, a short "never" list, the ids of exemplar answers, and the answers that contradict each rule. A rule enters the profile only after at least five consistent answers. The profile sets the starting point of the next proposal and the order of options. It never makes a choice on its own.
 
 ### Running the distiller

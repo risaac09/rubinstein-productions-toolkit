@@ -17,6 +17,7 @@ import os
 import re
 import sys
 import time
+from datetime import datetime
 
 from rpresolve.tastedistill import NON_LABEL, RATINGS  # the reader's own sets
 
@@ -104,13 +105,27 @@ def _utc(t):
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
 
 
+def _parse_ts(text):
+    """An ISO time ('2026-11-24T14:59:00Z' or with an offset) as epoch seconds; Refused if not one."""
+    try:
+        d = datetime.fromisoformat(str(text).strip().replace("Z", "+00:00"))
+    except ValueError:
+        raise Refused(f"time {text!r} is not ISO 8601, e.g. 2026-11-24T14:59:00Z")
+    if d.tzinfo is None:
+        raise Refused(f"time {text!r} has no zone; end it with Z or an offset")
+    return d.timestamp()
+
+
 def append(project_dir, project, step, device, choice=None, reason=None, key=None, question=None,
-           noise_type=None, repeat_of=None, warn=None, review_copy=None, inline_options=None, log_path=None):
+           noise_type=None, repeat_of=None, warn=None, review_copy=None, inline_options=None, log_path=None,
+           shown=None):
     """Validate and append one line; returns the line (a dict). Raises Refused.
     inline_options: {label: text} for a lettered question no key was sealed for.
     review_copy: the review-copy file an approve, go or hold line is about; the
     line records its name and sha256 (what deliver-check --review-log reads,
-    so a later hold withdraws an earlier approve)."""
+    so a later hold withdraws an earlier approve).
+    shown: when the stimulus reached the reviewer (ISO time); logged as shown_ts,
+    so minutes() can sum the reviewer's time from the log instead of an estimate."""
     from rpresolve import paths
     warn = warn or (lambda m: print("WARN: " + m, file=sys.stderr))
     if not PROJECT_RE.fullmatch(project or ""):
@@ -141,12 +156,16 @@ def append(project_dir, project, step, device, choice=None, reason=None, key=Non
     if repeat_of and repeat_of not in seen:
         raise Refused(f"--repeat-of {repeat_of}: no line in {log} has that ts")
     t = time.time()
+    shown_t = None if shown is None else _parse_ts(shown)
+    if shown_t is not None and shown_t > t:
+        raise Refused(f"--shown {shown} is later than now")
     while _utc(t) in seen:  # ts names a line for repeat_of, so it stays unique
         t += 1
     line = {"ts": _utc(t), "project": project, "step": step, "options": options, "choice": choice,
             "reason": reason, "device": device}
     for k, v in (("question", question), ("noise_type", noise_type or key_noise),
                  ("stimulus", stimulus), ("repeat_of", repeat_of),
+                 ("shown_ts", shown_t is not None and _utc(shown_t)),
                  ("review_copy", review_copy and os.path.basename(review_copy)),
                  ("review_sha256", review_copy and _sha256(review_copy))):
         if v:
@@ -164,3 +183,37 @@ def append(project_dir, project, step, device, choice=None, reason=None, key=Non
     finally:
         os.close(fd)
     return line
+
+
+def minutes(log):
+    """The reviewer's time from a log: per line with shown_ts, answer ts minus shown_ts.
+    shortcut: a card left open while the reviewer was away counts in full; read `longest` before trusting the sum."""
+    cards, untimed, total, longest = 0, 0, 0.0, None
+    with open(log, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            try:
+                e = json.loads(line)
+            except (ValueError, RecursionError):
+                continue
+            if not isinstance(e, dict) or not e.get("ts"):
+                continue
+            if not e.get("shown_ts"):
+                untimed += 1
+                continue
+            try:
+                secs = _parse_ts(e["ts"]) - _parse_ts(e["shown_ts"])
+            except Refused:
+                untimed += 1
+                continue
+            cards += 1
+            total += max(secs, 0.0)
+            if longest is None or secs > longest[1]:
+                longest = (e.get("step"), secs)
+    return {"cards": cards, "minutes": round(total / 60, 1), "untimed": untimed,
+            "longest": longest and {"step": longest[0], "minutes": round(longest[1] / 60, 1)}}
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 3 or sys.argv[1] != "minutes":
+        sys.exit("usage: python3 -m rpresolve.reviewlog minutes <project>/review/events.jsonl")
+    print(json.dumps(minutes(sys.argv[2])))
