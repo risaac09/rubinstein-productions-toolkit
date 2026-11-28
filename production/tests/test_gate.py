@@ -105,7 +105,7 @@ class TestGateRun(unittest.TestCase):
         again = gate.gate_one(self.d, self.dest, None, os.path.dirname(self.send_a))
         self.assertEqual(self.statuses(again)["send_copy"], qc.PASS)
 
-    def test_a_draft_with_no_audio_is_checked_not_fixed(self):
+    def test_a_draft_with_no_audio_fails_a_loudness_gate_and_is_not_fixed(self):
         import subprocess
         mute = os.path.join(self.tmp, "M.mp4")
         subprocess.run([dc.FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i",
@@ -114,7 +114,10 @@ class TestGateRun(unittest.TestCase):
         res = gate.gate_one(dict(self.d, file=mute, plan="M"), self.dest, None, None)
         self.assertEqual(res["checked"], mute)
         self.assertFalse(os.path.exists(dc.fixed_path(mute)))
-        self.assertNotEqual(self.statuses(res).get("loudness"), qc.FAIL)
+        self.assertEqual(self.statuses(res)["loudness"], qc.FAIL)
+        self.assertEqual(res["status"], "fail")
+        quiet = gate.gate_one(dict(self.d, file=mute, plan="M"), None, None, None)
+        self.assertNotEqual(self.statuses(quiet).get("loudness"), qc.FAIL)  # no target, no fail
 
     def test_without_a_destination_nothing_is_written(self):
         res = gate.gate_one(self.d, None, None, os.path.dirname(self.send_a))

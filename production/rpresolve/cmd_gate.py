@@ -203,7 +203,9 @@ def gate_one(d, dest, plans, send_dir):
         if x["check"] == "scdet" and x["status"] == qc.FAIL:
             # motion and flashes in action footage read as cuts; the duration row catches a lost span
             x = dict(x, status=qc.WARN, note="scdet is advisory here (motion reads as cuts)")
-        if x["check"] == "loudness" and dest and x["found"] != "no audio stream":
+        if x["check"] == "loudness" and dest and x["found"] == "no audio stream":
+            x = dict(x, status=qc.FAIL, expected="sound held to the destination's loudness target")
+        elif x["check"] == "loudness" and dest:
             m = re.match(r"(-?[\d.]+) LUFS", x["found"] or "")
             target, tol = (float(dest["loudness"][k]) for k in ("integrated_lufs", "tolerance_lu"))
             ok = bool(m) and abs(float(m.group(1)) - target) <= tol + 1e-9
