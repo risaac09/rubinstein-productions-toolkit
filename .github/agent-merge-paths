@@ -1,0 +1,14 @@
+# Paths an agent may merge with pr-merge-green. This file lists only what agents
+# MAY merge; anything not matched here (README, docs, .github, .agents, tools,
+# scripts, phase-zero, public-kit, a new top-level path) is public edge and the
+# maintainer merges it. A pull request that changes any unlisted path is refused.
+#
+# The helper reads this file from the base branch, never from the pull request.
+# This file is itself never agent-mergeable. Matching: ** crosses slashes, * and ?
+# do not. One pattern per line; # starts a comment on its own line.
+
+# Code, tests and the Markdown pages under production/ (the site builds none of them).
+production/**
+
+# One changelog fragment per pull request.
+changelog.d/*.md
