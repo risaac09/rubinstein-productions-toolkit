@@ -147,6 +147,16 @@ class TestPlan(Base):
         self.assertEqual(p["spans"][2]["transition"], {"type": "Cross Dissolve", "frames": 2})
         self.assertNotIn("transition", p["spans"][1])
 
+    def test_a_lead_and_a_tail_are_named_and_a_plain_manifest_names_none(self):
+        self.assertEqual(a.plan(self.manifest)["not_built"], [])
+        self.manifest["clips"][0]["spans"][2].update(audio_lead=0.5, audio_tail=0.2, layer={"path": "x"})
+        self.manifest["squeeze"] = 1.33
+        self.assertEqual(a.plan(self.manifest)["not_built"], [
+            "squeeze: not built by assemble_timeline",
+            "audio_lead on span 3: not built by assemble_timeline",
+            "audio_tail on span 3: not built by assemble_timeline",
+            "layer on span 3: not built by assemble_timeline"])
+
     def test_a_manifest_file_is_read_and_a_bad_one_refused(self):
         path = os.path.join(self.tmp.name, "m.json")
         with open(path, "w") as f:

@@ -141,6 +141,8 @@ def plan(manifest, exclude=None):
     not_built += [f"the {e['effect']} into item {e['span_index'] + 1}: not built by this tool "
                   "(the draft farm draws it)" for e in manifest.get("effects") or []
                   if e.get("effect") in transitions.IDS]
+    not_built += cutlist.unbuilt_lines(manifest, "assemble_timeline", ("squeeze",),
+                                       ("audio_lead", "audio_tail", "layer", "cutout"))
     try:
         wide = {p: rpsqueeze.answer(p) for p in sorted(set(paths.values()))}
     except rpsqueeze.SqueezeError as e:

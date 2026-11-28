@@ -526,6 +526,12 @@ def cut_gate(manifest_path, only=None, audio=True, force=False, exclude=None):
             "exclude": ex, "exclude_note": cutlist.exclude_note(ex)}
 
 
+# Manifest fields cut is given and never reads; its result names each one present.
+CUT_IGNORED_TOP = ("music", "music_gain_db", "camera_sound_lufs", "camera_sound_fade_s",
+                   "effects", "squeeze")
+CUT_IGNORED_SPAN = ("audio_lead", "audio_tail", "transition", "scale", "layer", "cutout")
+
+
 def cut_aspects(make_9x16=True, aspects=None):
     """The versions to build beside the 16:9: `aspects` when given, else
     9x16 unless make_9x16 is false. Raises Refused on an unknown aspect or
@@ -551,7 +557,8 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
     and/or 1x1; default 9x16, none with make_9x16 false). Returns {project,
     gate, source_item, aspects, would_create, unreframed, refused,
     reframes, skipped_existing, results, left_behind, ui_restore_problems,
-    plan_sha, exit_status, settings_drift_rows, exclude, exclude_note}. `exclude` (absolute
+    plan_sha, exit_status, settings_drift_rows, exclude, exclude_note, not_built}. not_built
+    names each manifest field cut ignores (audio_lead, music, transition ...), one line each. `exclude` (absolute
     path) is the operator's exclude list, checked by cut_gate (a gate passed in
     carries its own): the result's `exclude` is its path, takes and hash, or None with
     `exclude_note` saying nothing was checked. A version with no reframe for a span is not
@@ -668,6 +675,10 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
                            "resolution": list(src)},
            "aspects": list(aspects), "input_scaling": scaling, "would_create": would,
            "unreframed": unreframed, "refused": refused, "reframes": reframes,
+           "not_built": (cutlist.unbuilt_lines(m, "cut", CUT_IGNORED_TOP, CUT_IGNORED_SPAN, clips)
+                         + cutlist.silent_sound_line(m, "cut")
+                         + (["method.end: not built by cut"]
+                            if (m.get("method") or {}).get("end") else [])),
            "skipped_existing": skipped, "results": [], "left_behind": [],
            "ui_restore_problems": [], "plan_sha": sha, "dry_run": dry_run, "exit_status": 0,
            "settings_drift_rows": []}

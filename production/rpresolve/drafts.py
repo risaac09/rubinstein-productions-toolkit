@@ -946,6 +946,16 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
                 info["notes"].append("the crops file is not used: the method is 16:9")
             if id(p) in own_crops:
                 info["notes"].append(own_crops[id(p)])
+            info["notes"] += cutlist.unbuilt_lines(
+                p["manifest"], "the draft renderer",
+                ("music_gain_db", "camera_sound_lufs", "camera_sound_fade_s", "squeeze"),
+                ("audio_lead", "audio_tail", "layer", "cutout"))
+            if not p["manifest"].get("music"):
+                info["notes"] += cutlist.silent_sound_line(p["manifest"], "the draft renderer")
+            mfps = p["manifest"].get("fps")
+            if mfps is not None and mfps != p["method"]["fps"]:
+                info["notes"].append(f"fps: the manifest says {mfps}, drawn at the method's "
+                                     f"{p['method']['fps']}")
             if not ex:
                 info["notes"].append(cutlist.NO_EXCLUDE)
             elif ex["not_checked"]:
