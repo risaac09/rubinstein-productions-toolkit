@@ -460,8 +460,10 @@ def squeeze_answer(card, clip):
 def profile_answer(card, clip):
     """The colour mode a person recorded for one clip dict of a loaded card (answers.profile),
     or None. It speaks only where detect could not read the profile from the file's headers."""
-    pr = card["answers"].get("profile") or {}
-    return (pr.get("clips") or {}).get(clip["clip_id"], pr.get("default"))
+    pr = card["answers"].get("profile")
+    pr = pr if isinstance(pr, dict) else {}
+    ans = (pr.get("clips") or {}).get(clip["clip_id"], pr.get("default"))
+    return ans if ans in PROFILES else None  # a hand-edited value ingest cannot use is no answer
 
 
 def _record_newer(root, checked_utc):

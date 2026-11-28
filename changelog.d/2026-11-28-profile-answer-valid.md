@@ -1,0 +1,1 @@
+A hand-edited colour-mode answer that is not Normal, D-Log M or HLG no longer counts as an answer: project start keeps its detect review row open instead of dropping a row that ingest would still file as review.

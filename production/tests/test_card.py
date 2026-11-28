@@ -440,6 +440,10 @@ class Command(Base):
         self.assertEqual(card.validate(rec), [])
         c = card.load(root)
         self.assertEqual([card.profile_answer(c, k) for k in c["clips"]], [None, "D-Log M"])
+        c["answers"]["profile"]["clips"]["CAMA-012345/AAA0002"] = "Log"  # hand-edited: not an answer
+        self.assertEqual([card.profile_answer(c, k) for k in c["clips"]], [None, None])
+        c["answers"]["profile"] = "D-Log M"
+        self.assertEqual([card.profile_answer(c, k) for k in c["clips"]], [None, None])
 
     def test_set_records_a_squeeze_in_the_height_as_one_over_the_lens(self):
         make_card(self.tmp)
