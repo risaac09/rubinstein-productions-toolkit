@@ -58,6 +58,7 @@ Which to reach for:
 - Know the footage before touching it: `detect`, `measure`, `sync_measure`.
 - Build a timeline: `timeline_from_clips` for an ordered pull, `cut` for a manifest, `duplicate_timeline_auto` for a safe copy, `sync` for dual-system sound.
 - Grade and frame: `apply_grade`, `reframe_plan` then `reframe_apply`, `transform_apply` for a clip filmed sideways or upside down (check each on a rendered frame), `stabilize` on a sample first.
+- Step 0 before `queue_render`: if the server runs with `RPRESOLVE_OVERLAY_CHECK`, a stale overlay refuses the queue; rebuild the overlay with the tool that wrote it, then retry.
 - Captions and delivery: `create_captions`, `queue_render`, then after a person renders, `deliver_captions`, `deliver_fix_loudness` and `deliver_check` (its `ear_check` row stays owed until the reviewer logs it).
 - Trim review: `trim_review`, then `trim_review_markers`.
 - Offline clips: `relink`.

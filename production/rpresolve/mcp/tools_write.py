@@ -28,7 +28,7 @@ from .. import cli
 from .. import api, cmd_assemble, cmd_effect, cmd_vertical, deliver, delivercheck, ledgercheck, settingsguard, syncbuild, workflows
 from .. import detect as rpdetect
 from .. import ingest as rpingest
-from .. import proxies as rpproxies, relink as rprelink, trimreview
+from .. import overlay_fresh, proxies as rpproxies, relink as rprelink, trimreview
 from . import journal
 from .registry import WRITE, Tool
 
@@ -745,6 +745,7 @@ def vertical_apply(args, ctx):
 def queue_render(args, ctx):
     _require_sha(args)
     config = deliver_config()
+    overlay_fresh.refuse_if_stale()
     target = _abs(args["target_dir"], "target_dir") if args.get("target_dir") else None
     ctx.check_cancel()
 

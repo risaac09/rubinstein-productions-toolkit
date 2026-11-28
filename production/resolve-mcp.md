@@ -42,6 +42,13 @@ overlay that only adds a `target_dir`. A named overlay that is missing,
 does not parse, or is not a JSON object stops the tool with an error; it
 is never quietly replaced by the defaults.
 
+An overlay that is derived from other records can go stale. Add
+`-e "RPRESOLVE_OVERLAY_CHECK=<command and arguments>"` and `queue_render`
+runs that command first (split on spaces and quotes, no shell, 30 seconds).
+Exit 0 means fresh. Exit 1 refuses as stale, and any other exit, a command
+that will not start or a timeout refuses as unverified; nothing is queued in
+either case, dry runs included. Unset, it does nothing.
+
 Whether the write tools sit on "ask" in Claude Code's permissions is the
 operator's call: each dry-runs first, needs its plan_sha, journals every
 run and never starts a render, so a dialog per write adds little. Their

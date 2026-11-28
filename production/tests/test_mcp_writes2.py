@@ -575,6 +575,14 @@ class TestQueueRender(Base):
             call("queue_render", self.args(dry_run=False, plan_sha="0" * 64), self.resolve)
         self.assertEqual(self.project.jobs, [])
 
+    def test_a_stale_overlay_refuses_before_anything_is_queued(self):
+        with mock.patch.dict(os.environ, {"RPRESOLVE_OVERLAY_CHECK": "false"}):
+            with self.assertRaisesRegex(workflows.Refused, "overlay is stale"):
+                call("queue_render", self.args(), self.resolve)
+        with mock.patch.dict(os.environ, {"RPRESOLVE_OVERLAY_CHECK": "true"}):
+            call("queue_render", self.args(), self.resolve)
+        self.assertEqual(self.project.jobs, [])
+
     def test_unset_deliver_format_is_reported(self):
         self.project.fmt = {"format": "unknown", "codec": ""}
         dry, real = run_twice("queue_render", self.args(), self.resolve)

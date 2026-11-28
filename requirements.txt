@@ -42,6 +42,7 @@
 #   BRAW2PPM                     lutlab braw-proxy.sh              braw2ppm beside the script                the decoder lives elsewhere.
 #   BRAW_PROXY_LANES             lutlab braw-proxy.sh              2                                         you want more or fewer clips at once.
 #   RPRESOLVE_CONFIG             Resolve MCP deliver_check         none (resolve-config.json alone)          you keep a local overlay of the config.
+#   RPRESOLVE_OVERLAY_CHECK      Resolve MCP queue_render          none (no check)                           your config overlay is derived and a command can say if it is stale.
 #   RPRESOLVE_LOCK               rpresolve ResolveLock             ~/Library/Caches/rpresolve/resolve.lock   the lock file needs another place.
 #   RP_PIPELINE_CONFIG           rpresolve project                 none (paths on the command line)         you keep the landing, work, sheets and indexer settings in a JSON file.
 #   RPRESOLVE_MCP_OUT            Resolve MCP server                ~/Library/Caches/rpresolve/mcp            tool output needs another folder.

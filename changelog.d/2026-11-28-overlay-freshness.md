@@ -1,0 +1,1 @@
+queue_render runs an optional command named by RPRESOLVE_OVERLAY_CHECK first and refuses when the config overlay is stale or cannot be verified; unset, it does nothing. Adds resolve-traps T61 (a sideways action-camera clip: Rotation Angle, Zoom 1.778, judged per clip) and T62 (Inspector Position fields and background accessibility clicks, observed once). (PM-22)
