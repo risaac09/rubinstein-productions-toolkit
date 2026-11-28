@@ -81,6 +81,9 @@ class TestTransformApply(tra.Base):
         self.assertEqual(len(dry["warnings"]), 1)
         self.assertIn("black at the sides below zoom 2.249", dry["warnings"][0])
         self.assertIn("1 warning(s)", dry["summary"])
+        self.items[1].props["ZoomX"] = 2.25  # zoomed already: a rotation alone does not warn
+        dry = call("transform_apply", self.args([{"index": 2, "rotation": 90}]), self.resolve)
+        self.assertEqual(dry["warnings"], [])
         self.items[0].props["RotationAngle"] = 90.0  # turned already; a zoom alone is checked too
         dry = call("transform_apply", self.args([{"index": 1, "zoom": 1.2}]), self.resolve)
         self.assertEqual(len(dry["warnings"]), 1)

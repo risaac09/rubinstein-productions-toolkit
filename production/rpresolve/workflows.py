@@ -1600,9 +1600,13 @@ def transform_apply(resolve, project_name, timeline, items, track=1, dry_run=Fal
         rot = props.get("RotationAngle")
         if rot is None and here:  # a zoom alone on an item already turned
             rot = api._safe_call(it, "GetProperty", "RotationAngle")
+        zoom = props.get("ZoomX")
+        if zoom is None:  # a rotation alone on an item already zoomed
+            held_zoom = api._safe_call(it, "GetProperty", "ZoomX") if here else None
+            zoom = held_zoom if isinstance(held_zoom, (int, float)) else 1.0
         if isinstance(rot, (int, float)) and abs(abs(rot) % 180 - 90) < 1 and \
-                props.get("ZoomX", 1.0) < long_side - 1e-3:
-            row["warning"] = (f"a quarter turn at zoom {props.get('ZoomX', 1.0):g}: a source of "
+                zoom < long_side - 1e-3:
+            row["warning"] = (f"a quarter turn at zoom {zoom:g}: a source of "
                               f"the timeline's shape shows black at the sides below zoom "
                               f"{long_side:.3f}")
             warnings.append(f"#{n} {row['name']}: {row['warning']}")
