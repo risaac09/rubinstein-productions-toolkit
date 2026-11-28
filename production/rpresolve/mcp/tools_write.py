@@ -463,6 +463,36 @@ def reframe_apply(args, ctx):
         return run() if args["dry_run"] else _journalled("reframe_apply", args, run)
 
 
+def transform_apply(args, ctx):
+    _require_sha(args)
+
+    def run():
+        r = workflows.transform_apply(ctx.session.get(), args["project"], args["timeline"],
+                                      args["items"], track=args["track"],
+                                      dry_run=args["dry_run"], project_id=args.get("project_id"),
+                                      check_cancel=ctx.check_cancel,
+                                      expect_sha=args.get("plan_sha"))
+        tl, n = r["timeline"]["name"], len(r["targets"])
+        rest = (f"; {len(r['unchanged'])} unchanged" if r["unchanged"] else "") + \
+               (f"; {len(r['warnings'])} warning(s), read them" if r["warnings"] else "")
+        if r["dry_run"]:
+            r["summary"] = (f"would set the transform of {n} item(s) on '{tl}' V"
+                            f"{r['timeline']['track']}{rest}" + _how(r))
+        elif not n:
+            r["summary"] = f"nothing to write on '{tl}'{rest}"
+        else:
+            ok = sum(1 for x in r["results"] if x["ok"])
+            r["applied"] = ok
+            r["summary"] = (f"set and read back the transform of {ok} of {len(r['results'])} "
+                            f"item(s) on '{tl}'{rest}" +
+                            (f"; TRANSFORM LEAKED to {len(r['leaks'])} item(s) elsewhere"
+                             if r["leaks"] else "; no other timeline changed"))
+        return r
+
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        return run() if args["dry_run"] else _journalled("transform_apply", args, run)
+
+
 def stabilize(args, ctx):
     _require_sha(args)
 
@@ -1629,6 +1659,44 @@ def register(registry):
             **DRY_RUN},
          "required": ["project", "timeline", "plan"], "additionalProperties": False},
         reframe_apply, title="Apply a framing plan", annotations=DESTRUCTIVE))
+    registry.add(Tool(
+        "transform_apply",
+        "Set Rotation Angle, Zoom (X and Y together), Pan and Tilt on named video items of "
+        "one track of an ' [auto]' timeline, from an explicit list, and read each back: the "
+        "fix for a clip filmed sideways (rotation 90 or -90 and zoom to fill) or upside down "
+        "(rotation 180). Pan and Tilt are the Inspector's Position X and Y in the timeline's "
+        "pixels; a negative Tilt moves the picture down. A quarter turn with a zoom below "
+        "the frame's long side over its short side (1.778 on 16:9) is warned: black shows "
+        "at the sides. Refused: a timeline not ending ' [auto]', an index not on the track "
+        "or given twice, an entry with nothing to set. An entry the item already carries "
+        "writes nothing. After the real run every item on other timelines using the same "
+        "media, and every other item of the track, is compared and any change is reported "
+        "as a leak. Dry run first; the real run needs its plan_sha.",
+        {"type": "object", "properties": {
+            **PROJECT,
+            "timeline": {"type": "string",
+                         "description": "An ' [auto]' timeline's name or unique id."},
+            "track": {"type": "integer", "minimum": 1, "default": 1,
+                      "description": "The video track (default V1)."},
+            "items": {"type": "array", "minItems": 1, "maxItems": 500,
+                      "description": "One entry per item: its raw track position (timeline_items "
+                                     "index, from 1, a dissolve counted) and at least one value.",
+                      "items": {"type": "object", "properties": {
+                          "index": {"type": "integer", "minimum": 1},
+                          "rotation": {"type": "number", "minimum": -360, "maximum": 360,
+                                       "description": "Rotation Angle in degrees; positive "
+                                                      "turns counter-clockwise."},
+                          "zoom": {"type": "number", "minimum": 0.01, "maximum": 100,
+                                   "description": "Zoom X and Y together."},
+                          "pan": {"type": "number", "minimum": -100000, "maximum": 100000,
+                                  "description": "Position X in timeline pixels."},
+                          "tilt": {"type": "number", "minimum": -100000, "maximum": 100000,
+                                   "description": "Position Y in timeline pixels; negative "
+                                                  "moves the picture down."}},
+                                "required": ["index"], "additionalProperties": False}},
+            **DRY_RUN},
+         "required": ["project", "timeline", "items"], "additionalProperties": False},
+        transform_apply, title="Rotate, zoom and position items", annotations=DESTRUCTIVE))
     registry.add(Tool(
         "stabilize",
         "Call Resolve's TimelineItem.Stabilize() on video items of one track of an ' [auto]' "

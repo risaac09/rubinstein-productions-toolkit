@@ -1504,7 +1504,19 @@ def reframe_apply(resolve, project_name, timeline, plan, track=1, items=None, al
     if expect_sha and expect_sha != sha:
         raise Refused("the plan changed since the dry run (items or their framing differ); "
                       "run the dry run again and review it")
-    with api.timeline_current(resolve, project, tl):  # Pan is in the current timeline's pixels (T27)
+    _write_framing(resolve, project, pm, pin, tl, all_items, targets, out, check_cancel)
+    failed = any(not r["ok"] for r in out["results"]) or out["leaks"]
+    out["exit_status"] = 1 if failed else (2 if refusals else 0)
+    return out
+
+
+def _write_framing(resolve, project, pm, pin, tl, all_items, targets, out, check_cancel):
+    """Write each target's props on its item with the timeline current (Pan and Tilt are in
+    the current timeline's pixels, T27), read each back into out["results"], and put into
+    out["leaks"] every item on another timeline using the same media, and any item of this
+    track that was not a target, whose transform changed."""
+    tl_name, tl_id = tl.GetName(), tl.GetUniqueId()
+    with api.timeline_current(resolve, project, tl):
         media = {t["media_id"] for t in targets if t["media_id"]}
         shared = _shared_items(project, tl_id, media)
         before = _transforms([it for _, it in shared])
@@ -1527,8 +1539,97 @@ def reframe_apply(resolve, project_name, timeline, plan, track=1, items=None, al
         out["leaks"] = [label for (label, _), a, b in zip(shared, before, after) if a != b]
         if _transforms(untouched) != untouched_before:
             out["leaks"].append(f"{tl_name}: an item that was not a target changed")
+
+
+# transform_apply's keys and the item properties each sets; zoom sets both axes.
+TRANSFORM_KEYS = (("rotation", ("RotationAngle",)), ("zoom", ("ZoomX", "ZoomY")),
+                  ("pan", ("Pan",)), ("tilt", ("Tilt",)))
+
+
+def transform_apply(resolve, project_name, timeline, items, track=1, dry_run=False,
+                    project_id=None, check_cancel=None, expect_sha=None):
+    """Set RotationAngle, Zoom (X and Y together), Pan and Tilt on named items of one
+    video track of an ' [auto]' timeline from an explicit list of {index, rotation,
+    zoom, pan, tilt} (index is the raw track position, from 1), read each back, and
+    check that nothing changed on another timeline using the same media nor on an
+    item of this track that was not a target. Pan and Tilt are the Inspector's
+    Position X and Y in the timeline's own pixels, written with it current (T27);
+    a negative Tilt moves the picture down. For a clip filmed sideways or upside
+    down, the fix framing tools cannot make. A quarter turn (90 or 270) with a zoom
+    under the frame's long side over its short side gets a warning: on a source of
+    the timeline's shape that shows black at the sides. Refused: a timeline not
+    ending ' [auto]', a track or index that is not there, an index given twice, an
+    entry with nothing to set. An entry the item already carries writes nothing.
+    Returns {project, timeline, targets, unchanged, results, leaks, warnings,
+    plan_sha, dry_run, exit_status}."""
+    pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
+    _, tl = api.find_timeline(project, timeline)
+    tl_name, tl_id = tl.GetName(), tl.GetUniqueId()
+    if not tl_name.endswith(AUTO):
+        raise Refused(f"'{tl_name}' is not an [auto] timeline. Transforms go only onto "
+                      "timelines these tools made; duplicate it first (duplicate_timeline_auto).")
+    tracks = int(tl.GetTrackCount("video") or 0)
+    if not 1 <= track <= tracks:
+        raise Refused(f"'{tl_name}' has {tracks} video track(s).")
+    all_items = tl.GetItemListInTrack("video", track) or []
+    if not items:
+        raise Refused("items is empty: name at least one item and what to set on it")
+    idx = [e["index"] for e in items]
+    twice = sorted({n for n in idx if idx.count(n) > 1})
+    if twice:
+        raise Refused(f"item(s) {twice} given more than once; give each item one entry")
+    bad = [n for n in idx if not 1 <= n <= len(all_items)]
+    if bad:
+        raise Refused(f"no item(s) {bad} on V{track} ({len(all_items)} item(s)).")
+    size = _timeline_size(project, tl)
+    long_side = max(size) / min(size) if min(size) else 1.0
+    here = api._safe_call(api._safe_call(project, "GetCurrentTimeline"), "GetUniqueId") == tl_id
+    targets, unchanged, warnings = [], [], []
+    for e in sorted(items, key=lambda e: e["index"]):
+        n = e["index"]
+        it = all_items[n - 1]
+        props = {name: round(float(e[key]), 4)
+                 for key, names in TRANSFORM_KEYS if e.get(key) is not None for name in names}
+        if not props:
+            raise Refused(f"item {n}: nothing to set (give rotation, zoom, pan or tilt)")
+        # Pan and Tilt read in the current timeline's pixels (T27): held framing is unknown
+        # under another timeline, so every entry is then a target.
+        now = {k: api._safe_call(it, "GetProperty", k) if here else None for k in props}
+        row = {"index": n, "name": it.GetName(), "media_id": _media_id(it), "props": props,
+               "current": now}
+        rot = props.get("RotationAngle")
+        if rot is None and here:  # a zoom alone on an item already turned
+            rot = api._safe_call(it, "GetProperty", "RotationAngle")
+        if isinstance(rot, (int, float)) and abs(abs(rot) % 180 - 90) < 1 and \
+                props.get("ZoomX", 1.0) < long_side - 1e-3:
+            row["warning"] = (f"a quarter turn at zoom {props.get('ZoomX', 1.0):g}: a source of "
+                              f"the timeline's shape shows black at the sides below zoom "
+                              f"{long_side:.3f}")
+            warnings.append(f"#{n} {row['name']}: {row['warning']}")
+        same = all(isinstance(now[k], (int, float)) and abs(now[k] - v) <= 1e-3
+                   for k, v in props.items())
+        if same:
+            row["why"] = "the item already carries this transform"
+            unchanged.append(row)
+        else:
+            targets.append(row)
+    sha = plan_sha("transform_apply", pin.unique_id, tl_id, track,
+                   [(t["index"], t["name"], t["props"]) for t in targets])
+    out = {"project": {"name": pin.name, "id": pin.unique_id},
+           "timeline": {"name": tl_name, "unique_id": tl_id, "track": track,
+                        "other_tracks": api.other_video_tracks(tl, track), "size": list(size)},
+           "targets": [{k: v for k, v in t.items() if k != "media_id"} for t in targets],
+           "unchanged": [{k: v for k, v in t.items() if k != "media_id"} for t in unchanged],
+           "results": [], "leaks": [], "warnings": warnings, "plan_sha": sha,
+           "dry_run": dry_run, "exit_status": 0}
+    if dry_run or not targets:
+        return out
+    if expect_sha and expect_sha != sha:
+        raise Refused("the transforms changed since the dry run (items or values differ); "
+                      "run the dry run again and review it")
+    _write_framing(resolve, project, pm, pin, tl, all_items, targets, out, check_cancel)
     failed = any(not r["ok"] for r in out["results"]) or out["leaks"]
-    out["exit_status"] = 1 if failed else (2 if refusals else 0)
+    out["exit_status"] = 1 if failed else 0
     return out
 
 
